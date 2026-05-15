@@ -125,6 +125,37 @@ src/
 worker/                     # Cloudflare Worker (update checks + feedback)
 ```
 
+## Releasing
+
+Releases are fully automated via [release-please](https://github.com/googleapis/release-please).
+
+**How it works:**
+
+1. Merge commits to `main` using [Conventional Commits](https://www.conventionalcommits.org) — e.g. `feat: add X`, `fix: Y`, `chore: Z`
+2. The `release-please` GitHub Action automatically opens/maintains a **Release PR** titled `chore: release X.Y.Z` that:
+   - Bumps the version in `package.json`
+   - Updates `CHANGELOG.md` with entries grouped by type
+3. When you're ready to ship, **merge the Release PR**
+4. release-please creates the git tag (e.g. `v1.1.0`), which triggers the `release.yml` workflow → builds macOS DMG, Windows EXE, Linux deb/rpm → creates a draft GitHub Release
+5. Go to [Releases](https://github.com/OpenConduit/Client/releases), review the draft, and publish
+
+**Commit types and their effect:**
+
+| Prefix | Changelog section | Version bump |
+|---|---|---|
+| `feat:` | Features | minor (`1.0.x` → `1.1.0`) |
+| `fix:` | Bug Fixes | patch (`1.0.0` → `1.0.1`) |
+| `feat!:` / `BREAKING CHANGE:` | ⚠ Breaking Changes | major (`1.x.x` → `2.0.0`) |
+| `docs:`, `chore:`, `ci:` | _(not shown)_ | none |
+| `perf:` | Performance Improvements | patch |
+| `refactor:` | _(not shown)_ | none |
+
+**Key files:**
+- `release-please-config.json` — release-please configuration
+- `.release-please-manifest.json` — tracks the last released version (updated automatically, don't edit manually)
+- `.github/workflows/release-please.yml` — runs on every push to `main`
+- `.github/workflows/release.yml` — triggered by the version tag; builds and uploads artifacts
+
 ## Contributing
 
 1. Fork the repo and create a branch from `main`

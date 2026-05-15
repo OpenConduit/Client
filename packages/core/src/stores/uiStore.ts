@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ToolApprovalRequest } from '../../shared/types';
+import type { ToolApprovalRequest } from '../types';
 
 interface UiState {
   activeConversationId: string | null;

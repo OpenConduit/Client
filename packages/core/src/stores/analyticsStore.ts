@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { ModelPricing, TokenUsage, UsageRecord } from '../../shared/types';
+import type { ModelPricing, TokenUsage, UsageRecord } from '../types';
 
 interface AnalyticsState {
   records: UsageRecord[];

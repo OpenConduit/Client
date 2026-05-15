@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { AiQuestion } from '../../shared/types';
+import type { AiQuestion } from '../types';
 
 interface Props {
   questions: AiQuestion[];

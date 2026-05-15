@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AiTask } from '../../shared/types';
+import type { AiTask } from '../types';
 
 interface TasksState {
   tasks: AiTask[];

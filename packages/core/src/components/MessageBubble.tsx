@@ -2,7 +2,7 @@ import React, { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js';
-import type { Message, AiQuestion } from '../../shared/types';
+import type { Message, AiQuestion } from '../types';
 import ToolCallCard from './ToolCallCard';
 import QuestionsCard from './QuestionsCard';
 import { useSettingsStore } from '../stores/settingsStore';

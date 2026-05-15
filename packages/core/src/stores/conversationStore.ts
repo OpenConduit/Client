@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { Conversation, Message, ToolCall } from '../../shared/types';
+import type { Conversation, Message, ToolCall } from '../types';
 
 interface ConversationState {
   conversations: Conversation[];

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import type { Attachment } from '../../shared/types';
+import type { Attachment } from '../types';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useAnalyticsStore } from '../stores/analyticsStore';
 import { useConversationStore } from '../stores/conversationStore';

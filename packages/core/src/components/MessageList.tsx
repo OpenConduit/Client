@@ -1,12 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import type { Message } from '../../shared/types';
+import type { Message } from '../types';
 import MessageBubble from './MessageBubble';
 
 interface Props {
   messages: Message[];
   onApprove: (toolId: string) => void;
   onDeny: (toolId: string) => void;
-  onSendAnswers: (questions: import('../../shared/types').AiQuestion[], answers: Record<string, string>) => void;
+  onSendAnswers: (questions: import('../types').AiQuestion[], answers: Record<string, string>) => void;
 }
 
 export default function MessageList({ messages, onApprove, onDeny, onSendAnswers }: Props) {

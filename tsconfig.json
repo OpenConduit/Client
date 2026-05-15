@@ -16,8 +16,10 @@
     "paths": {
       "@main/*": ["src/main/*"],
       "@renderer/*": ["src/renderer/*"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@openconduit/core": ["packages/core/src/index.ts"],
+      "@openconduit/core/*": ["packages/core/src/*"]
     }
   },
-  "include": ["src/**/*", "forge.config.ts", "vite.*.ts"]
+  "include": ["src/**/*", "packages/**/*", "forge.config.ts", "vite.*.ts"]
 }

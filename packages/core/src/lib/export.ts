@@ -1,4 +1,4 @@
-import type { Conversation } from '../../shared/types';
+import type { Conversation } from '../types';
 
 export function exportAsJson(conversation: Conversation): string {
   return JSON.stringify(conversation, null, 2);

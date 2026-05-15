@@ -10,7 +10,7 @@ import type {
   ToolApprovalRequest,
   ToolCall,
   UpdateInfo,
-} from '../../shared/types';
+} from '../types';
 
 type UnsubFn = () => void;
 

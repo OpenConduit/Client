@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { ToolCall } from '../../shared/types';
+import type { ToolCall } from '../types';
 
 interface Props {
   toolCall: ToolCall;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useConversationStore } from '../stores/conversationStore';
 import { useUiStore } from '../stores/uiStore';
-import type { ModelParameters } from '../../shared/types';
+import type { ModelParameters } from '../types';
 
 interface Props {
   conversationId: string;

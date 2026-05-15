@@ -1,4 +1,4 @@
-import type { ChatRequest, Message, StreamChunk, ToolCall } from '../../shared/types';
+import type { ChatRequest, Message, StreamChunk, ToolCall } from '../types';
 
 export type BeforeSendHook = (request: ChatRequest) => ChatRequest | Promise<ChatRequest>;
 export type OnResponseHook = (message: Message) => void | Promise<void>;

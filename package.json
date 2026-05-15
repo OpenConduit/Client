@@ -5,6 +5,9 @@
   "description": "Cross-platform desktop AI chat client — OpenAI, Anthropic, LM Studio, and MCP tool servers",
   "main": ".vite/build/main.js",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTasksStore } from '../stores/tasksStore';
-import type { AiTask } from '../../shared/types';
+import type { AiTask } from '../types';
 
 const STATUS_CONFIG: Record<AiTask['status'], { icon: React.ReactNode; label: string; color: string }> = {
   pending: {
