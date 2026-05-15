@@ -14,6 +14,10 @@ const config: ForgeConfig = {
     name: 'OpenConduit',
     executableName: 'openconduit',
     icon: 'icons/icon', // .icns on macOS, .ico on Windows, .png on Linux
+    osxUniversal: {
+      // Code signature files exist in arm64 frameworks but not x64 — skip merging them
+      singleArchFiles: '**/_CodeSignature/**',
+    },
   },
   rebuildConfig: {},
   makers: [
