@@ -2,7 +2,7 @@
   "name": "openconduit",
   "productName": "OpenConduit",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Cross-platform desktop AI chat client — OpenAI, Anthropic, LM Studio, and MCP tool servers",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
