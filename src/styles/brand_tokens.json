@@ -1,0 +1,48 @@
+{
+  "brand": "OpenConduit.ai",
+  "version": "1.0",
+  "colors": {
+    "primary": {
+      "hex": "#3B82F6",
+      "name": "Electric Blue"
+    },
+    "secondary": {
+      "hex": "#8B5CF6",
+      "name": "Electric Violet"
+    },
+    "accent": {
+      "hex": "#06B6D4",
+      "name": "Cyan"
+    },
+    "background": {
+      "hex": "#0F172A",
+      "name": "Dark Navy"
+    },
+    "surface": {
+      "hex": "#1E293B",
+      "name": "Surface"
+    },
+    "muted": {
+      "hex": "#64748B",
+      "name": "Muted Gray"
+    },
+    "text": {
+      "hex": "#F8FAFC",
+      "name": "Off White"
+    }
+  },
+  "typography": {
+    "heading": {
+      "family": "Inter",
+      "weight": "700"
+    },
+    "body": {
+      "family": "Inter",
+      "weight": "400"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "weight": "400"
+    }
+  }
+}

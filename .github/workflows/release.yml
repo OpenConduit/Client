@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write  # needed to create GitHub Releases
+
+jobs:
+  build-mac-arm64:
+    name: Build macOS (Apple Silicon)
+    runs-on: macos-15  # M1 — ARM64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build macOS arm64
+        run: npm run make -- --platform darwin --arch arm64
+        env:
+          # Code signing (optional)
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # CSC_LINK: ${{ secrets.CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          NODE_ENV: production
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openconduit-mac-arm64-${{ github.ref_name }}
+          path: out/make/**/*.zip
+          retention-days: 30
+
+  build-mac-x64:
+    name: Build macOS (Intel)
+    runs-on: macos-13  # Intel x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build macOS x64
+        run: npm run make -- --platform darwin --arch x64
+        env:
+          NODE_ENV: production
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openconduit-mac-x64-${{ github.ref_name }}
+          path: out/make/**/*.zip
+          retention-days: 30
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build Windows distributable
+        run: npm run make -- --platform win32
+        env:
+          NODE_ENV: production
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openconduit-win-${{ github.ref_name }}
+          path: out/make/**/*.exe
+          retention-days: 30
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Linux packaging deps
+        run: sudo apt-get install -y rpm
+
+      - name: Build Linux distributable
+        run: npm run make -- --platform linux
+        env:
+          NODE_ENV: production
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openconduit-linux-${{ github.ref_name }}
+          path: |
+            out/make/**/*.deb
+            out/make/**/*.rpm
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: [build-mac-arm64, build-mac-x64, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: true   # Review before publishing

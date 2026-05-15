@@ -1,0 +1,11 @@
+:root {
+  --color-primary:   #3B82F6;
+  --color-secondary: #8B5CF6;
+  --color-accent:    #06B6D4;
+  --color-bg:        #0F172A;
+  --color-surface:   #1E293B;
+  --color-muted:     #64748B;
+  --color-text:      #F8FAFC;
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
