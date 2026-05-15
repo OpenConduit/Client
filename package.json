@@ -10,7 +10,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "prepare": "husky"
   },
   "keywords": [],
   "author": {
@@ -42,7 +43,9 @@
     "electron": "^42.0.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "highlight.js": "^11.11.1",
+    "husky": "^9.1.7",
     "postcss": "^8.5.14",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
