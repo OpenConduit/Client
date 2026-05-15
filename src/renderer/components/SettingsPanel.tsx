@@ -4,6 +4,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useUiStore } from '../stores/uiStore';
 import { useAnalyticsStore } from '../stores/analyticsStore';
 import type { ProviderConfig, McpServerConfig, AppSettings, ProviderType, McpTransport, McpTool, UpdateInfo, FeedbackPayload } from '../../shared/types';
+import { service } from '../services';
 
 type Tab = 'general' | 'providers' | 'mcp' | 'features' | 'labs' | 'analytics' | 'about';
 
@@ -182,20 +183,20 @@ function GeneralTab({
         </p>
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => window.api.config.exportSettings(true)}
+            onClick={() => service.config.exportSettings(true)}
             className="btn-secondary text-xs px-3 py-1.5"
           >
             Export (clean)
           </button>
           <button
-            onClick={() => window.api.config.exportSettings(false)}
+            onClick={() => service.config.exportSettings(false)}
             className="btn-secondary text-xs px-3 py-1.5"
           >
             Export (with API keys)
           </button>
           <button
             onClick={async () => {
-              const imported = await window.api.config.importSettings();
+              const imported = await service.config.importSettings();
               if (imported) onSave(imported);
             }}
             className="btn-secondary text-xs px-3 py-1.5"
@@ -486,7 +487,7 @@ function McpTab({
     if (!toolsMap[serverId]) {
       setLoadingTools(serverId);
       try {
-        const tools = await window.api.mcp.listTools([serverId]);
+        const tools = await service.mcp.listTools([serverId]);
         setToolsMap((m) => ({ ...m, [serverId]: tools }));
       } catch {
         setToolsMap((m) => ({ ...m, [serverId]: [] }));
@@ -506,7 +507,7 @@ function McpTab({
 
   const handleDelete = (id: string) => {
     if (!confirm('Delete this MCP server?')) return;
-    window.api.mcp.disconnect(id).catch(() => { /* intentional */ });
+    service.mcp.disconnect(id).catch(() => { /* intentional */ });
     onSave({ mcpServers: settings.mcpServers.filter((s) => s.id !== id) });
   };
 
@@ -514,9 +515,9 @@ function McpTab({
     setConnecting(server.id);
     try {
       if (mcpStatus[server.id]) {
-        await window.api.mcp.disconnect(server.id);
+        await service.mcp.disconnect(server.id);
       } else {
-        await window.api.mcp.connect(server);
+        await service.mcp.connect(server);
       }
       await onRefreshStatus();
     } catch (err) {
@@ -1476,7 +1477,7 @@ function AboutTab({
     setUpdateInfo(null);
     setCheckError('');
     try {
-      const info = await window.api.updater.checkForUpdates();
+      const info = await service.updater.checkForUpdates();
       setUpdateInfo(info);
       setCheckState('idle');
     } catch (e) {
@@ -1490,7 +1491,7 @@ function AboutTab({
     setSubmitState('loading');
     setSubmitError('');
     try {
-      await window.api.updater.submitFeedback({ type: feedbackType, title: feedbackTitle.trim(), description: feedbackDesc.trim() });
+      await service.updater.submitFeedback({ type: feedbackType, title: feedbackTitle.trim(), description: feedbackDesc.trim() });
       setSubmitState('success');
       setFeedbackTitle('');
       setFeedbackDesc('');
@@ -1548,7 +1549,7 @@ function AboutTab({
                 )}
                 {updateInfo.downloadUrl && (
                   <button
-                    onClick={() => window.api.updater.openExternal(updateInfo.downloadUrl!)}
+                    onClick={() => service.updater.openExternal(updateInfo.downloadUrl!)}
                     className="inline-block mt-2 underline text-green-400 hover:text-green-200 text-left"
                   >
                     Download v{updateInfo.latestVersion} →

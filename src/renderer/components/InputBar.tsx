@@ -4,6 +4,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useAnalyticsStore } from '../stores/analyticsStore';
 import { useConversationStore } from '../stores/conversationStore';
 import { getContextLimit, fmtTok } from '../utils/context';
+import { service } from '../services';
 
 interface Props {
   onSend: (content: string, attachments?: Attachment[]) => void;
@@ -245,8 +246,8 @@ export default function InputBar({ onSend, onAbort, onClear, onCompact, onTrim, 
                         onClick={async () => {
                           setConnecting(s.id);
                           try {
-                            if (connected) await window.api.mcp.disconnect(s.id);
-                            else await window.api.mcp.connect(s);
+                            if (connected) await service.mcp.disconnect(s.id);
+                            else await service.mcp.connect(s);
                             await refreshMcpStatus();
                           } catch (err) { alert(`MCP: ${err}`); }
                           finally { setConnecting(null); }

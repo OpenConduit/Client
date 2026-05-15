@@ -8,6 +8,7 @@ import { useUiStore } from '../stores/uiStore';
 import { useTasksStore } from '../stores/tasksStore';
 import { useAnalyticsStore } from '../stores/analyticsStore';
 import { getContextLimit, estimateTokens } from '../utils/context';
+import { service } from '../services';
 
 // ─── Task + Question parsing ──────────────────────────────────────────────────
 
@@ -107,12 +108,12 @@ function ensureListeners() {
   if (listenersRegistered) return;
   listenersRegistered = true;
 
-  window.api.chat.onChunk((chunk: StreamChunk) => {
+  service.chat.onChunk((chunk: StreamChunk) => {
     useConversationStore.getState().appendToMessage(chunk.conversationId, chunk.messageId, chunk.delta);
     hookRegistry.runOnStreamChunk(chunk);
   });
 
-  window.api.chat.onEnd((end: StreamEnd) => {
+  service.chat.onEnd((end: StreamEnd) => {
     const { finalizeMessage, updateMessage, replaceMessages } = useConversationStore.getState();
 
     // ── Compact request: replace all messages with the summary ──────────────
@@ -189,7 +190,7 @@ function ensureListeners() {
 
   // Pending tool calls: sent BEFORE approval is requested so the Approve/Deny
   // buttons are visible. Update the message in-place so user can respond.
-  window.api.chat.onToolPending((data) => {
+  service.chat.onToolPending((data) => {
     useConversationStore.getState().updateMessage(data.conversationId, data.messageId, {
       isStreaming: false,
       toolCalls: data.toolCalls,
@@ -197,11 +198,11 @@ function ensureListeners() {
     useUiStore.getState().setIsStreaming(false);
   });
 
-  window.api.chat.onThinkingChunk((data) => {
+  service.chat.onThinkingChunk((data) => {
     useConversationStore.getState().appendThinkingToMessage(data.conversationId, data.messageId, data.delta);
   });
 
-  window.api.chat.onError((err: StreamError) => {
+  service.chat.onError((err: StreamError) => {
     // Clean up compact state if the errored request was a summarize call
     if (compactingRequests.has(err.messageId)) {
       compactingRequests.delete(err.messageId);
@@ -214,7 +215,7 @@ function ensureListeners() {
     useUiStore.getState().setIsStreaming(false);
   });
 
-  window.api.tools.onApprovalRequest((req: ToolApprovalRequest) => {
+  service.tools.onApprovalRequest((req: ToolApprovalRequest) => {
     useUiStore.getState().addPendingApproval(req);
   });
 }
@@ -289,7 +290,7 @@ export function useChat() {
 
       setIsStreaming(true);
 
-      const { messageId } = await window.api.chat.send(request);
+      const { messageId } = await service.chat.send(request);
 
       // Add placeholder assistant message
       addMessage(activeConversationId, {
@@ -307,7 +308,7 @@ export function useChat() {
 
   const abortStream = useCallback(() => {
     if (activeConversationId) {
-      window.api.chat.abort(activeConversationId);
+      service.chat.abort(activeConversationId);
       useUiStore.getState().setIsStreaming(false);
     }
   }, [activeConversationId]);
@@ -356,7 +357,7 @@ export function useChat() {
     };
 
     try {
-      const { messageId } = await window.api.chat.send(request);
+      const { messageId } = await service.chat.send(request);
       compactingRequests.add(messageId);
       addMessage(activeConversationId, {
         id: messageId,
@@ -405,7 +406,7 @@ export function useChat() {
 
   const approveToolCall = useCallback(
     (toolId: string, approved: boolean) => {
-      window.api.tools.sendApproval({ toolId, approved });
+      service.tools.sendApproval({ toolId, approved });
       removePendingApproval(toolId);
     },
     [removePendingApproval],

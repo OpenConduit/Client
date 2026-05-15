@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AppSettings } from '../../shared/types';
+import { service } from '../services';
 
 interface SettingsState {
   settings: AppSettings | null;
@@ -17,22 +18,22 @@ export const useSettingsStore = create<SettingsState>()((set, _get) => ({
   mcpStatus: {},
 
   loadSettings: async () => {
-    const settings = await window.api.settings.get();
+    const settings = await service.settings.get();
     set({ settings });
   },
 
   saveSettings: async (partial) => {
-    const updated = await window.api.settings.set(partial);
+    const updated = await service.settings.set(partial);
     set({ settings: updated });
   },
 
   loadModels: async (providerId: string) => {
-    const list = await window.api.models.list(providerId);
+    const list = await service.models.list(providerId);
     set((s) => ({ models: { ...s.models, [providerId]: list } }));
   },
 
   refreshMcpStatus: async () => {
-    const status = await window.api.mcp.getStatus();
+    const status = await service.mcp.getStatus();
     set({ mcpStatus: status });
   },
 }));
