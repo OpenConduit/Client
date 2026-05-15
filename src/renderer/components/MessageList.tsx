@@ -14,6 +14,7 @@ export default function MessageList({ messages, onApprove, onDeny, onSendAnswers
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, messages[messages.length - 1]?.content]);
 
   if (messages.length === 0) {

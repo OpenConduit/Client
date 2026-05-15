@@ -36,7 +36,7 @@ function computeCost(
 export const useAnalyticsStore = create<AnalyticsState>()(
   persist(
     (set) => ({
-      records: [],
+      records: [] as UsageRecord[],
       addRecord: ({ conversationId, providerId, model, usage }, pricing) => {
         const record: UsageRecord = {
           id: uuidv4(),

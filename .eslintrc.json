@@ -10,7 +10,24 @@
     "plugin:@typescript-eslint/recommended",
     "plugin:import/recommended",
     "plugin:import/electron",
-    "plugin:import/typescript"
+    "plugin:import/typescript",
+    "plugin:react-hooks/recommended"
   ],
-  "parser": "@typescript-eslint/parser"
+  "parser": "@typescript-eslint/parser",
+  "settings": {
+    "import/ignore": [
+      "uuid",
+      "@modelcontextprotocol/sdk"
+    ]
+  },
+  "rules": {
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": ["warn", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_",
+      "destructuredArrayIgnorePattern": "^_"
+    }],
+    "import/no-unresolved": ["error", { "ignore": ["uuid", "@modelcontextprotocol/sdk"] }]
+  }
 }

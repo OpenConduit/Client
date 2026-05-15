@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
-import { Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
-import { McpTool } from '../../shared/types';
+import { McpTool, Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
 
 function toOpenAIMessages(
   messages: Message[],

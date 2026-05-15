@@ -19,7 +19,6 @@ export default function TopBar({ conversationId }: Props) {
   const [titleDraft, setTitleDraft] = useState('');
 
   const providerId = conv?.providerId ?? settings?.defaultProviderId ?? '';
-  const provider = settings?.providers.find((p) => p.id === providerId);
   const modelList = models[providerId] ?? [];
 
   useEffect(() => {

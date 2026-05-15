@@ -19,7 +19,7 @@ interface ConversationState {
 
 export const useConversationStore = create<ConversationState>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({
       conversations: [] as Conversation[],
 
       addConversation: (partial = {}) => {

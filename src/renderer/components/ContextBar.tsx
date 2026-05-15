@@ -104,7 +104,7 @@ export default function ContextBar({ conversationId }: Props) {
           className="w-3 h-3 text-red-400 flex-shrink-0"
           fill="currentColor"
           viewBox="0 0 20 20"
-          title="Context window nearly full"
+          aria-label="Context window nearly full"
         >
           <path
             fillRule="evenodd"

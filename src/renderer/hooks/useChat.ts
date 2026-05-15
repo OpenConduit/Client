@@ -11,8 +11,8 @@ import { getContextLimit, estimateTokens } from '../utils/context';
 
 // ─── Task + Question parsing ──────────────────────────────────────────────────
 
-const AI_TASKS_RE = /<ai-tasks>([\/\S\s]*?)<\/ai-tasks>/;
-const AI_QUESTIONS_RE = /<ai-questions>([\/\S\s]*?)<\/ai-questions>/;
+const AI_TASKS_RE = /<ai-tasks>([/\S\s]*?)<\/ai-tasks>/;
+const AI_QUESTIONS_RE = /<ai-questions>([/\S\s]*?)<\/ai-questions>/;
 
 const TASK_TRACKING_PROMPT = `
 When working on multi-step tasks, maintain a running task list by including the following block at the end of your response whenever your task list changes:

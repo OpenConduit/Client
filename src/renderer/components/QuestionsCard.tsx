@@ -24,20 +24,20 @@ function QuestionInput({
   if (q.options && q.multiSelect) {
     const selected = value ? value.split('|||') : [];
 
-    function toggle(opt: string) {
+    const toggle = (opt: string) => {
       const next = selected.includes(opt)
         ? selected.filter((s) => s !== opt)
         : [...selected, opt];
       onChange(next.join('|||'));
-    }
+    };
 
-    function toggleOther() {
+    const toggleOther = () => {
       const MARKER = '__other__';
       const hasOther = selected.includes(MARKER);
       const next = hasOther ? selected.filter((s) => s !== MARKER) : [...selected, MARKER];
       onChange(next.join('|||'));
       if (hasOther) setOtherText('');
-    }
+    };
 
     const hasOther = selected.includes('__other__');
 

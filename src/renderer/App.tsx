@@ -30,6 +30,7 @@ export default function App() {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       root.classList.toggle('dark', prefersDark);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.theme]);
 
   // If no active conversation but conversations exist, select the latest
@@ -37,6 +38,7 @@ export default function App() {
     if (!activeConversationId && conversations.length > 0) {
       setActiveConversation(conversations[0].id);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.length, activeConversationId, setActiveConversation]);
 
   // Open settings on first launch (no providers configured)
@@ -44,6 +46,7 @@ export default function App() {
     if (settings && settings.providers.length === 0) {
       setShowSettings(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.providers.length]);
 
   // Keyboard shortcuts

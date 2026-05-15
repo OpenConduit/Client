@@ -125,6 +125,7 @@ function ConversationItem({
 
   const date = new Date(updatedAt);
   const label =
+    // eslint-disable-next-line react-hooks/purity
     Date.now() - updatedAt < 86_400_000
       ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : date.toLocaleDateString([], { month: 'short', day: 'numeric' });

@@ -1,7 +1,6 @@
 // LM Studio uses the OpenAI-compatible API — we just re-export with a default base URL
 import { streamOpenAI } from './openai';
-import { Message, ModelParameters, ProviderConfig, ToolCall } from '../../shared/types';
-import { McpTool } from '../../shared/types';
+import { McpTool, Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
 
 export async function* streamLmStudio(
   config: ProviderConfig,
@@ -10,7 +9,7 @@ export async function* streamLmStudio(
   params: ModelParameters,
   systemPrompt: string | undefined,
   tools: McpTool[],
-): AsyncGenerator<{ type: 'delta'; text: string } | { type: 'thinking'; text: string } | { type: 'tool_calls'; toolCalls: ToolCall[] }> {
+): AsyncGenerator<{ type: 'delta'; text: string } | { type: 'thinking'; text: string } | { type: 'tool_calls'; toolCalls: ToolCall[] } | { type: 'usage'; usage: TokenUsage }> {
   const lmConfig: ProviderConfig = {
     ...config,
     apiKey: config.apiKey ?? 'lm-studio',

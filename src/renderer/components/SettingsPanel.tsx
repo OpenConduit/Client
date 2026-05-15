@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useUiStore } from '../stores/uiStore';
 import { useAnalyticsStore } from '../stores/analyticsStore';
-import type { ProviderConfig, McpServerConfig, AppSettings, ModelPricing, ProviderType, McpTransport, McpTool, UpdateInfo, FeedbackPayload } from '../../shared/types';
+import type { ProviderConfig, McpServerConfig, AppSettings, ProviderType, McpTransport, McpTool, UpdateInfo, FeedbackPayload } from '../../shared/types';
 
 type Tab = 'general' | 'providers' | 'mcp' | 'features' | 'labs' | 'analytics' | 'about';
 
@@ -506,7 +506,7 @@ function McpTab({
 
   const handleDelete = (id: string) => {
     if (!confirm('Delete this MCP server?')) return;
-    window.api.mcp.disconnect(id).catch(() => {});
+    window.api.mcp.disconnect(id).catch(() => { /* intentional */ });
     onSave({ mcpServers: settings.mcpServers.filter((s) => s.id !== id) });
   };
 
@@ -952,7 +952,6 @@ function McpServerForm({
 // ─── Unified Models Field ─────────────────────────────────────────────────────
 // One entry per model: name + optional context window size.
 
-type ModelEntry = { name: string; contextWindow: string };
 
 function ModelsField({
   models,
@@ -1456,8 +1455,8 @@ function AddModelPricingRow({ existingKeys, onAdd }: { existingKeys: string[]; o
 // ─── About Tab ────────────────────────────────────────────────────────────────
 
 function AboutTab({
-  settings,
-  onSave,
+  settings: _settings,
+  onSave: _onSave,
 }: {
   settings: AppSettings;
   onSave: (p: Partial<AppSettings>) => Promise<void>;

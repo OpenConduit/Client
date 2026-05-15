@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import AnthropicFoundry from '@anthropic-ai/foundry-sdk';
-import { Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
-import { McpTool } from '../../shared/types';
+import { McpTool, Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
 
 function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
   const result: Anthropic.MessageParam[] = [];
