@@ -9,9 +9,9 @@ permissions:
   contents: write  # needed to create GitHub Releases
 
 jobs:
-  build-mac-arm64:
-    name: Build macOS (Apple Silicon)
-    runs-on: macos-15  # M1 — ARM64
+  build-mac:
+    name: Build macOS (Universal)
+    runs-on: macos-15  # ARM64 runner — can cross-compile universal binary
     steps:
       - uses: actions/checkout@v4
 
@@ -22,8 +22,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Build macOS arm64
-        run: npm run make -- --platform darwin --arch arm64
+      - name: Build macOS universal
+        run: npm run make -- --platform darwin --arch universal
         env:
           # Code signing (optional)
           # APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -35,31 +35,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: openconduit-mac-arm64-${{ github.ref_name }}
-          path: out/make/**/*.dmg
-          retention-days: 30
-
-  build-mac-x64:
-    name: Build macOS (Intel)
-    runs-on: macos-13  # Intel x64
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - run: npm ci
-
-      - name: Build macOS x64
-        run: npm run make -- --platform darwin --arch x64
-        env:
-          NODE_ENV: production
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: openconduit-mac-x64-${{ github.ref_name }}
+          name: openconduit-mac-universal-${{ github.ref_name }}
           path: out/make/**/*.dmg
           retention-days: 30
 
@@ -120,7 +96,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-mac-arm64, build-mac-x64, build-windows, build-linux]
+    needs: [build-mac, build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
