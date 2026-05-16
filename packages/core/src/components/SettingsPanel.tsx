@@ -1532,8 +1532,8 @@ function AboutTab({
           </select>
           <p className="mt-1.5 text-[11px] text-slate-600">
             {channel === 'stable' && 'Production releases only.'}
-            {channel === 'beta' && 'Pre-release builds — stable features, occasional rough edges.'}
-            {channel === 'alpha' && 'Experimental builds — may be unstable. Not recommended for daily use.'}
+            {channel === 'beta' && 'Beta releases only — no alpha builds.'}
+            {channel === 'alpha' && 'Bleeding edge — alpha and beta pre-releases.'}
           </p>
         </div>
 

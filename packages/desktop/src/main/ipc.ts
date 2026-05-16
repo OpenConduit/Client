@@ -211,9 +211,9 @@ export function registerIpcHandlers(): void {
         const match = releases.find((r) => {
           if (!r.prerelease) return false;
           const tag = r.tag_name.toLowerCase();
-          if (channel === 'alpha') return tag.includes('alpha');
-          // beta channel accepts both beta and alpha builds
-          return tag.includes('beta') || tag.includes('alpha');
+          if (channel === 'beta') return tag.includes('beta');
+          // alpha channel accepts alpha and beta builds
+          return tag.includes('alpha') || tag.includes('beta');
         });
         if (!match) {
           // No pre-release found — fall back to stable behaviour
