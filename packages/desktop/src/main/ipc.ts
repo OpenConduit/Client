@@ -30,9 +30,7 @@ import { streamLmStudio } from './providers/lmstudio';
 const abortControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
 
-export function registerIpcHandlers(window: BrowserWindow): void {
-  const wc = window.webContents;
-
+export function registerIpcHandlers(): void {
   // Tool approval responses
   ipcMain.on(
     IPC.TOOL_APPROVAL_RESPONSE,
@@ -229,7 +227,8 @@ export function registerIpcHandlers(window: BrowserWindow): void {
   });
 
   // ─── Chat Send ───────────────────────────────────────────────────────────
-  ipcMain.handle(IPC.CHAT_SEND, async (_e, request: ChatRequest) => {
+  ipcMain.handle(IPC.CHAT_SEND, async (e, request: ChatRequest) => {
+    const wc = e.sender;
     const { conversationId, providerId, model, parameters, systemPrompt, enabledMcpServerIds } =
       request;
     const messageId = uuidv4();

@@ -56,10 +56,10 @@ const createWindow = () => {
     );
   }
 
-  registerIpcHandlers(mainWindow);
 };
 
 app.on('ready', createWindow);
+registerIpcHandlers();
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
