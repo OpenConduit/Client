@@ -15,6 +15,9 @@ interface ConversationState {
   finalizeMessage: (convId: string, msgId: string, toolCalls: ToolCall[]) => void;
   clearMessages: (convId: string) => void;
   replaceMessages: (convId: string, messages: Message[]) => void;
+  /** Bulk-replace the conversation list. Used by server-backed implementations
+   * (e.g. cloud) to seed the store from an API response. Messages default to []. */
+  setConversations: (conversations: Array<Omit<Conversation, 'messages'> & { messages?: Message[] }>) => void;
 }
 
 export const useConversationStore = create<ConversationState>()(
@@ -161,6 +164,12 @@ export const useConversationStore = create<ConversationState>()(
             c.id === convId ? { ...c, messages, updatedAt: Date.now() } : c,
           ),
         }));
+      },
+
+      setConversations: (convs) => {
+        set({
+          conversations: convs.map((c) => ({ ...c, messages: c.messages ?? [] })),
+        });
       },
     }),
     { name: 'openconduit-conversations' },

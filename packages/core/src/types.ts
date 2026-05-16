@@ -55,7 +55,10 @@ export interface Attachment {
   id: string;
   name: string;
   mimeType: string;
-  data: string; // base64
+  /** Base64-encoded data (desktop/local). */
+  data?: string;
+  /** R2 object key (cloud storage). */
+  r2Key?: string;
   size: number;
 }
 
@@ -98,6 +101,10 @@ export interface Conversation {
   providerId?: string;
   model?: string;
   parameters?: ModelParameters;
+  /** Cloud: persona assigned to this conversation. */
+  personaId?: string;
+  /** Cloud: workspace this conversation belongs to. */
+  workspaceId?: string;
 }
 
 // ─── Token Usage ──────────────────────────────────────────────────────────
