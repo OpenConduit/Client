@@ -8,18 +8,14 @@
     "noImplicitAny": true,
     "sourceMap": true,
     "baseUrl": ".",
-    "outDir": "dist",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "jsx": "react-jsx",
     "strict": false,
     "paths": {
-      "@main/*": ["src/main/*"],
-      "@renderer/*": ["src/renderer/*"],
-      "@shared/*": ["src/shared/*"],
       "@openconduit/core": ["packages/core/src/index.ts"],
       "@openconduit/core/*": ["packages/core/src/*"]
     }
   },
-  "include": ["src/**/*", "packages/**/*", "forge.config.ts", "vite.*.ts"]
+  "include": ["packages/**/*"]
 }

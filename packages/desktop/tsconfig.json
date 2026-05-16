@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "paths": {
+      "@main/*": ["src/main/*"],
+      "@renderer/*": ["src/renderer/*"],
+      "@shared/*": ["src/shared/*"],
+      "@openconduit/core": ["../core/src/index.ts"],
+      "@openconduit/core/*": ["../core/src/*"]
+    }
+  },
+  "include": ["src/**/*", "forge.config.ts", "vite.*.ts"]
+}

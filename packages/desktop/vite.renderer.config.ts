@@ -19,7 +19,7 @@ export default defineConfig({
     alias: {
       '@renderer': path.resolve(__dirname, 'src/renderer'),
       '@shared': path.resolve(__dirname, 'src/shared'),
-      '@openconduit/core': path.resolve(__dirname, 'packages/core/src'),
+      '@openconduit/core': path.resolve(__dirname, '../core/src'),
     },
   },
 });
