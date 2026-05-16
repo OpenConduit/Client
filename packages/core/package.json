@@ -1,6 +1,6 @@
 {
   "name": "@openconduit/core",
-  "version": "1.0.0",
+  "version": "1.1.0-alpha.1",
   "private": true,
   "description": "Shared UI components, stores, hooks, and service interface for OpenConduit",
   "main": "src/index.ts",
