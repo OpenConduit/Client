@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useConversationStore } from '../stores/conversationStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useUiStore } from '../stores/uiStore';
@@ -8,6 +8,7 @@ export default function Sidebar() {
   const { conversations, addConversation, deleteConversation } = useConversationStore();
   const { settings } = useSettingsStore();
   const { activeConversationId, setActiveConversation, sidebarOpen, setShowSettings } = useUiStore();
+  const [query, setQuery] = useState('');
 
   const handleNew = () => {
     const conv = addConversation({
@@ -41,7 +42,7 @@ export default function Sidebar() {
   return (
     <aside className="w-64 flex-shrink-0 bg-slate-800 flex flex-col border-r border-slate-700">
       {/* Header */}
-      <div className="p-4 border-b border-slate-700 pt-8">
+      <div className="p-4 border-b border-slate-700 pt-8 flex flex-col gap-2">
         <button
           onClick={handleNew}
           className="w-full flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3 py-2 text-sm font-medium transition-colors"
@@ -51,6 +52,20 @@ export default function Sidebar() {
           </svg>
           New Chat
         </button>
+        {conversations.length > 0 && (
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="w-full bg-slate-700/60 text-slate-200 placeholder-slate-500 text-xs rounded-lg pl-7 pr-3 py-1.5 outline-none focus:ring-1 focus:ring-blue-500/60"
+            />
+          </div>
+        )}
       </div>
 
       {/* Conversation list */}
@@ -58,7 +73,14 @@ export default function Sidebar() {
         {conversations.length === 0 && (
           <p className="text-slate-500 text-xs text-center px-4 py-6">No conversations yet</p>
         )}
-        {conversations.map((conv) => (
+        {(() => {
+          const filtered = query.trim()
+            ? conversations.filter((c) => c.title.toLowerCase().includes(query.toLowerCase()))
+            : conversations;
+          if (conversations.length > 0 && filtered.length === 0) {
+            return <p className="text-slate-500 text-xs text-center px-4 py-6">No matches</p>;
+          }
+          return filtered.map((conv) => (
           <ConversationItem
             key={conv.id}
             id={conv.id}
@@ -70,7 +92,8 @@ export default function Sidebar() {
             onExportJson={(e) => handleExport(e, conv.id, 'json')}
             onExportMd={(e) => handleExport(e, conv.id, 'md')}
           />
-        ))}
+          ));
+        })()}
       </div>
 
       {/* Bottom actions */}

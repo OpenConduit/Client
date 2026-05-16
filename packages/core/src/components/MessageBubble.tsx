@@ -18,7 +18,15 @@ const MessageBubble = memo(function MessageBubble({ message, onApprove, onDeny, 
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   const [thinkingOpen, setThinkingOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const debugMode = useSettingsStore((s) => s.settings?.labs?.debugMode ?? false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(message.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
 
   function downloadRaw() {
     const blob = new Blob([JSON.stringify(message, null, 2)], { type: 'application/json' });
@@ -185,6 +193,23 @@ const MessageBubble = memo(function MessageBubble({ message, onApprove, onDeny, 
             <span className="text-[10px] text-slate-600" title={`${message.usage.inputTokens.toLocaleString()} in / ${message.usage.outputTokens.toLocaleString()} out`}>
               {(message.usage.inputTokens + message.usage.outputTokens).toLocaleString()} tok
             </span>
+          )}
+          {isAssistant && !message.isStreaming && (
+            <button
+              onClick={handleCopy}
+              title="Copy message"
+              className="ml-1 text-[10px] text-slate-600 hover:text-slate-400 transition-colors flex items-center gap-0.5"
+            >
+              {copied ? (
+                <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              )}
+            </button>
           )}
           {debugMode && isAssistant && (
             <button
