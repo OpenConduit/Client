@@ -171,11 +171,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.UPDATE_CHECK, async (): Promise<UpdateInfo> => {
     const currentVersion = app.getVersion();
     const userAgent = `openconduit/${currentVersion}`;
+    const channel = (getSettings().updateChannel ?? 'stable') as 'stable' | 'beta' | 'alpha';
 
     // Try Worker first (if configured), fall back to GitHub Releases API
     if (WORKER_URL) {
       try {
-        const res = await fetch(`${WORKER_URL}/latest`, {
+        const res = await fetch(`${WORKER_URL}/latest?channel=${channel}`, {
           headers: { 'User-Agent': userAgent },
           signal: AbortSignal.timeout(6000),
         });
@@ -188,14 +189,44 @@ export function registerIpcHandlers(): void {
     }
 
     try {
-      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-        headers: { 'User-Agent': userAgent, Accept: 'application/vnd.github+json' },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) throw new Error(`GitHub API returned HTTP ${res.status}`);
-      const data = await res.json() as { tag_name: string; body?: string; html_url: string };
-      const latestVersion = data.tag_name.replace(/^v/, '');
-      return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: data.body, downloadUrl: data.html_url };
+      if (channel === 'stable') {
+        // Stable: use /releases/latest (excludes pre-releases)
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+          headers: { 'User-Agent': userAgent, Accept: 'application/vnd.github+json' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) throw new Error(`GitHub API returned HTTP ${res.status}`);
+        const data = await res.json() as { tag_name: string; body?: string; html_url: string };
+        const latestVersion = data.tag_name.replace(/^v/, '');
+        return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: data.body, downloadUrl: data.html_url };
+      } else {
+        // Beta/Alpha: scan all releases for the newest matching pre-release tag
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20`, {
+          headers: { 'User-Agent': userAgent, Accept: 'application/vnd.github+json' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) throw new Error(`GitHub API returned HTTP ${res.status}`);
+        const releases = await res.json() as Array<{ tag_name: string; prerelease: boolean; body?: string; html_url: string }>;
+        // Accept releases tagged with the channel name or any looser pre-release when channel is beta
+        const match = releases.find((r) => {
+          if (!r.prerelease) return false;
+          const tag = r.tag_name.toLowerCase();
+          if (channel === 'alpha') return tag.includes('alpha');
+          // beta channel accepts both beta and alpha builds
+          return tag.includes('beta') || tag.includes('alpha');
+        });
+        if (!match) {
+          // No pre-release found — fall back to stable behaviour
+          const fallback = releases.find((r) => !r.prerelease);
+          if (fallback) {
+            const latestVersion = fallback.tag_name.replace(/^v/, '');
+            return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: fallback.body, downloadUrl: fallback.html_url };
+          }
+          throw new Error('No releases found');
+        }
+        const latestVersion = match.tag_name.replace(/^v/, '');
+        return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: match.body, downloadUrl: match.html_url };
+      }
     } catch (err) {
       throw new Error(`Update check failed: ${err instanceof Error ? err.message : String(err)}`);
     }

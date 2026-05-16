@@ -182,6 +182,8 @@ export interface AppSettings {
   };
   /** User-entered per-model pricing for cost tracking (USD per 1M tokens) */
   modelPricing?: ModelPricing;
+  /** Which release channel to check for updates */
+  updateChannel?: 'stable' | 'beta' | 'alpha';
 }
 
 // ─── IPC Channel Names ─────────────────────────────────────────────────────

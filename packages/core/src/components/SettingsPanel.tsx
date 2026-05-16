@@ -1456,8 +1456,8 @@ function AddModelPricingRow({ existingKeys, onAdd }: { existingKeys: string[]; o
 // ─── About Tab ────────────────────────────────────────────────────────────────
 
 function AboutTab({
-  settings: _settings,
-  onSave: _onSave,
+  settings,
+  onSave,
 }: {
   settings: AppSettings;
   onSave: (p: Partial<AppSettings>) => Promise<void>;
@@ -1465,6 +1465,7 @@ function AboutTab({
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [checkState, setCheckState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [checkError, setCheckError] = useState('');
+  const channel = settings.updateChannel ?? 'stable';
 
   const [feedbackType, setFeedbackType] = useState<FeedbackPayload['type']>('bug');
   const [feedbackTitle, setFeedbackTitle] = useState('');
@@ -1517,6 +1518,36 @@ function AboutTab({
 
       {/* Update checker */}
       <Section title="Updates">
+        {/* Channel selector */}
+        <div className="mb-3">
+          <p className="text-xs text-slate-400 mb-2">Update channel</p>
+          <div className="flex gap-2">
+            {(['stable', 'beta', 'alpha'] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => { onSave({ updateChannel: c }); setUpdateInfo(null); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${
+                  channel === c
+                    ? c === 'stable'
+                      ? 'bg-blue-600 text-white'
+                      : c === 'beta'
+                        ? 'bg-violet-600 text-white'
+                        : 'bg-orange-600 text-white'
+                    : 'bg-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-600">
+            {channel === 'stable' && 'Production releases only.'}
+            {channel === 'beta' && 'Pre-release builds — stable features, occasional rough edges.'}
+            {channel === 'alpha' && 'Experimental builds — may be unstable. Not recommended for daily use.'}
+          </p>
+        </div>
+
         <div className="flex items-center gap-3">
           <button
             onClick={checkUpdates}

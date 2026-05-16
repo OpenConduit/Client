@@ -11,6 +11,7 @@ const defaults: AppSettings = {
     maxTokens: 4096,
   },
   requireToolApproval: true,
+  updateChannel: 'stable',
   features: {},
   labs: {
     aiTaskTracking: false,
