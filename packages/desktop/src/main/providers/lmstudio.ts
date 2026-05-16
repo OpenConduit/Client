@@ -2,6 +2,11 @@
 import { streamOpenAI } from './openai';
 import { McpTool, Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
 
+function normalizeLmStudioBaseUrl(url: string | undefined): string {
+  const base = (url ?? 'http://localhost:1234').replace(/\/v1\/?$/, '');
+  return `${base}/v1`;
+}
+
 export async function* streamLmStudio(
   config: ProviderConfig,
   messages: Message[],
@@ -13,7 +18,7 @@ export async function* streamLmStudio(
   const lmConfig: ProviderConfig = {
     ...config,
     apiKey: config.apiKey ?? 'lm-studio',
-    baseUrl: config.baseUrl ?? 'http://localhost:1234/v1',
+    baseUrl: normalizeLmStudioBaseUrl(config.baseUrl),
   };
   yield* streamOpenAI(lmConfig, messages, model, params, systemPrompt, tools);
 }

@@ -70,9 +70,13 @@ export function registerIpcHandlers(): void {
     if (provider.type === 'openai' || provider.type === 'lmstudio') {
       try {
         const OpenAI = (await import('openai')).default;
+        const lmBaseUrl =
+          provider.type === 'lmstudio'
+            ? (provider.baseUrl ?? 'http://localhost:1234').replace(/\/v1\/?$/, '') + '/v1'
+            : provider.baseUrl;
         const client = new OpenAI({
           apiKey: provider.apiKey ?? 'lm-studio',
-          baseURL: provider.baseUrl,
+          baseURL: lmBaseUrl,
         });
         const models = await client.models.list();
         return models.data.map((m: { id: string }) => m.id).sort();
