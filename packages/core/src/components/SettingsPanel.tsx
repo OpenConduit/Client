@@ -1520,27 +1520,16 @@ function AboutTab({
       <Section title="Updates">
         {/* Channel selector */}
         <div className="mb-3">
-          <p className="text-xs text-slate-400 mb-2">Update channel</p>
-          <div className="flex gap-2">
-            {(['stable', 'beta', 'alpha'] as const).map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => { onSave({ updateChannel: c }); setUpdateInfo(null); }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${
-                  channel === c
-                    ? c === 'stable'
-                      ? 'bg-blue-600 text-white'
-                      : c === 'beta'
-                        ? 'bg-violet-600 text-white'
-                        : 'bg-orange-600 text-white'
-                    : 'bg-slate-700 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
+          <label className="text-xs text-slate-400 block mb-1.5">Update channel</label>
+          <select
+            value={channel}
+            onChange={(e) => { onSave({ updateChannel: e.target.value as 'stable' | 'beta' | 'alpha' }); setUpdateInfo(null); }}
+            className="w-48 bg-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-blue-500 border border-slate-600"
+          >
+            <option value="stable">Stable</option>
+            <option value="beta">Beta</option>
+            <option value="alpha">Alpha</option>
+          </select>
           <p className="mt-1.5 text-[11px] text-slate-600">
             {channel === 'stable' && 'Production releases only.'}
             {channel === 'beta' && 'Pre-release builds — stable features, occasional rough edges.'}
