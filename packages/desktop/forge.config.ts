@@ -6,7 +6,6 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
-import { version } from './package.json';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -24,7 +23,7 @@ const config: ForgeConfig = {
       iconUrl: 'https://raw.githubusercontent.com/OpenConduit/Client/main/icons/favicon.ico',
     }),
     new MakerDMG({
-      name: `OpenConduit-${version}-arm64`,
+      name: 'OpenConduit',
       icon: 'icons/icon.icns',
       format: 'ULFO',
     }, ['darwin']),
