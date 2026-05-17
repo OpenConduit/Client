@@ -5,6 +5,7 @@ import InputBar from './InputBar';
 import SystemPromptEditor from './SystemPromptEditor';
 import ParameterControls from './ParameterControls';
 import TasksPanel from './TasksPanel';
+import FilesPanel from './FilesPanel';
 import ContextWarningBanner from './ContextWarningBanner';
 import { useChat } from '../hooks/useChat';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -34,6 +35,7 @@ export default function ChatArea({ conversationId }: Props) {
 
       <MessageList
         messages={conversation?.messages ?? []}
+        conversationId={conversationId ?? undefined}
         onApprove={(id) => approveToolCall(id, true)}
         onDeny={(id) => approveToolCall(id, false)}
         onSendAnswers={sendAnswers}
@@ -64,6 +66,9 @@ export default function ChatArea({ conversationId }: Props) {
         disabled={!conversationId}
         conversationId={conversationId}
       />
+
+      {/* Files panel — slides in over the right side of chat */}
+      <FilesPanel />
     </div>
   );
 }

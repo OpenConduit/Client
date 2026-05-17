@@ -21,6 +21,8 @@ interface UiState {
   setIsCompacting: (v: boolean) => void;
   isCompareMode: boolean;
   setCompareMode: (v: boolean) => void;
+  showFilesPanel: boolean;
+  setShowFilesPanel: (v: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -55,4 +57,7 @@ export const useUiStore = create<UiState>()((set) => ({
 
   isCompareMode: false,
   setCompareMode: (v) => set({ isCompareMode: v }),
+
+  showFilesPanel: false,
+  setShowFilesPanel: (v) => set({ showFilesPanel: v }),
 }));
