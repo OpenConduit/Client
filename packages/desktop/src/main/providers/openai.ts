@@ -1,6 +1,19 @@
 import OpenAI from 'openai';
 import { McpTool, Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
 
+async function pdfToText(base64: string): Promise<string> {
+  try {
+    const buf = Buffer.from(base64, 'base64');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = await import('pdf-parse') as any;
+    const parse: (buf: Buffer) => Promise<{ text: string }> = mod.default ?? mod;
+    const result = await parse(buf);
+    return result.text;
+  } catch {
+    return '[PDF text could not be extracted]';
+  }
+}
+
 function toOpenAIMessages(
   messages: Message[],
   systemPrompt?: string,
@@ -18,6 +31,9 @@ function toOpenAIMessages(
               type: 'image_url',
               image_url: { url: `data:${att.mimeType};base64,${att.data}` },
             });
+          } else if (att.data) {
+            // PDFs arrive pre-converted to text (see pre-processing in streamOpenAI)
+            parts.push({ type: 'text', text: `[Attached file: ${att.name}]\n${att.data}` });
           }
         }
       }
@@ -67,6 +83,21 @@ export async function* streamOpenAI(
   systemPrompt: string | undefined,
   tools: McpTool[],
 ): AsyncGenerator<{ type: 'delta'; text: string } | { type: 'thinking'; text: string } | { type: 'tool_calls'; toolCalls: ToolCall[] } | { type: 'usage'; usage: TokenUsage }> {
+  // OpenAI doesn't support native PDF — pre-process messages to extract text
+  const processedMessages = await Promise.all(
+    messages.map(async (m) => {
+      if (m.role !== 'user' || !m.attachments?.some((a) => a.mimeType === 'application/pdf')) return m;
+      const attachments = await Promise.all(
+        m.attachments.map(async (att) => {
+          if (att.mimeType !== 'application/pdf' || !att.data) return att;
+          const text = await pdfToText(att.data);
+          return { ...att, mimeType: 'text/plain', data: text };
+        }),
+      );
+      return { ...m, attachments };
+    }),
+  );
+
   const client = new OpenAI({
     apiKey: config.apiKey ?? 'lm-studio',
     baseURL: config.baseUrl,
@@ -79,7 +110,7 @@ export async function* streamOpenAI(
     temperature: params.temperature,
     top_p: params.topP,
     max_completion_tokens: params.maxTokens,
-    messages: toOpenAIMessages(messages, systemPrompt),
+    messages: toOpenAIMessages(processedMessages, systemPrompt),
     ...(tools.length ? { tools: toOpenAITools(tools), tool_choice: 'auto' } : {}),
   });
 

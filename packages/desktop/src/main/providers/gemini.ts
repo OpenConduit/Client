@@ -15,8 +15,11 @@ function toGeminiContents(messages: Message[]): GeminiContent[] {
       if (m.content) parts.push({ text: m.content });
       if (m.attachments) {
         for (const att of m.attachments) {
-          if (att.mimeType.startsWith('image/')) {
+          if (att.mimeType.startsWith('image/') || att.mimeType === 'application/pdf') {
+            // Images and PDFs both supported as inlineData by Gemini 1.5+
             parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
+          } else if (att.data) {
+            parts.push({ text: `[Attached file: ${att.name}]\n${att.data}` });
           }
         }
       }
