@@ -388,6 +388,7 @@ function ProviderForm({
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic</option>
             <option value="lmstudio">LM Studio</option>
+            <option value="gemini">Google Gemini</option>
           </select>
         </Field>
 
@@ -397,7 +398,7 @@ function ProviderForm({
               type="password"
               value={draft.apiKey ?? ''}
               onChange={(e) => set('apiKey', e.target.value)}
-              placeholder="sk-..."
+              placeholder={draft.type === 'gemini' ? 'AIza...' : 'sk-...'}
               className="input-field"
               autoComplete="off"
             />
@@ -414,7 +415,9 @@ function ProviderForm({
                 ? 'http://localhost:1234/v1'
                 : draft.type === 'anthropic'
                   ? 'https://…services.ai.azure.com/anthropic'
-                  : 'https://api.openai.com/v1'
+                  : draft.type === 'gemini'
+                    ? 'https://generativelanguage.googleapis.com (optional)'
+                    : 'https://api.openai.com/v1'
             }
             className="input-field"
           />
@@ -455,7 +458,9 @@ function ProviderForm({
                 ? 'claude-sonnet-4-5'
                 : draft.type === 'lmstudio'
                   ? 'local-model'
-                  : 'gpt-4o'
+                  : draft.type === 'gemini'
+                    ? 'gemini-2.0-flash'
+                    : 'gpt-4o'
             }
             className="input-field"
           />
@@ -1270,10 +1275,11 @@ function ProviderBadge({ type }: { type: ProviderType }) {
     openai: 'bg-emerald-800 text-emerald-200',
     anthropic: 'bg-orange-800 text-orange-200',
     lmstudio: 'bg-purple-800 text-purple-200',
+    gemini: 'bg-blue-800 text-blue-200',
   };
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${colors[type]}`}>
-      {type === 'lmstudio' ? 'LMS' : type === 'anthropic' ? 'ANT' : 'OAI'}
+      {type === 'lmstudio' ? 'LMS' : type === 'anthropic' ? 'ANT' : type === 'gemini' ? 'GEM' : 'OAI'}
     </span>
   );
 }
