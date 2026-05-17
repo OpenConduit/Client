@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
+import CompareArea from './components/CompareArea';
 import SettingsPanel from './components/SettingsPanel';
 import { useSettingsStore } from './stores/settingsStore';
 import { useUiStore } from './stores/uiStore';
@@ -8,7 +9,7 @@ import { useConversationStore } from './stores/conversationStore';
 
 export default function App() {
   const { loadSettings, settings } = useSettingsStore();
-  const { activeConversationId, setActiveConversation, setShowSettings } = useUiStore();
+  const { activeConversationId, setActiveConversation, setShowSettings, isCompareMode } = useUiStore();
   const { conversations, addConversation } = useConversationStore();
 
   // Bootstrap: load settings from main process
@@ -85,7 +86,11 @@ export default function App() {
   return (
     <div className="h-full flex bg-slate-900 text-slate-100 overflow-hidden">
       <Sidebar />
-      <ChatArea conversationId={activeConversationId} />
+      {isCompareMode ? (
+        <CompareArea />
+      ) : (
+        <ChatArea conversationId={activeConversationId} />
+      )}
       <SettingsPanel />
     </div>
   );

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useConversationStore } from '../stores/conversationStore';
 import { useUiStore } from '../stores/uiStore';
-
 interface Props {
   conversationId: string | null;
 }
@@ -12,7 +11,7 @@ const isMac = navigator.userAgent.includes('Mac OS X');
 export default function TopBar({ conversationId }: Props) {
   const { conversations, updateConversation } = useConversationStore();
   const { settings, models, loadModels } = useSettingsStore();
-  const { setSidebarOpen, sidebarOpen, setShowSettings } = useUiStore();
+  const { setSidebarOpen, sidebarOpen, setShowSettings, setCompareMode } = useUiStore();
 
   const conv = conversations.find((c) => c.id === conversationId);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -133,6 +132,18 @@ export default function TopBar({ conversationId }: Props) {
           </select>
         </div>
       )}
+
+      {/* Compare button */}
+      <button
+        onClick={() => setCompareMode(true)}
+        style={noDragStyle}
+        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+        title="Compare models"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+        </svg>
+      </button>
 
       {/* Settings button */}
       <button
