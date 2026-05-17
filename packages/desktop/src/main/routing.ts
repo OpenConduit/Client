@@ -7,6 +7,7 @@
  */
 
 import type { ProviderConfig, RoutingConfig, RoutingDecision, RoutingTaskType } from '../shared/types';
+import { normalizeOllamaBaseUrl, toOllamaModelId } from './providers/ollama';
 
 const ROUTER_PROMPT = `You are a routing classifier. Analyze the user message and respond with ONLY a valid JSON object — no other text.
 
@@ -43,11 +44,13 @@ async function classifyWithOpenAI(
     baseURL:
       provider.type === 'lmstudio'
         ? (provider.baseUrl ?? 'http://localhost:1234').replace(/\/v1\/?$/, '') + '/v1'
+        : provider.type === 'ollama'
+          ? normalizeOllamaBaseUrl(provider.baseUrl)
         : provider.baseUrl,
   });
 
   const response = await client.chat.completions.create({
-    model,
+    model: provider.type === 'ollama' ? toOllamaModelId(model) : model,
     messages: [
       { role: 'system', content: ROUTER_PROMPT },
       { role: 'user', content: userMessage },
@@ -143,7 +146,11 @@ export async function evaluateRouting(params: {
   let classification: RouterClassification = { complexity: 1, taskType: 'general' };
 
   try {
-    if (routerProvider.type === 'openai' || routerProvider.type === 'lmstudio') {
+    if (
+      routerProvider.type === 'openai' ||
+      routerProvider.type === 'lmstudio' ||
+      routerProvider.type === 'ollama'
+    ) {
       classification = await classifyWithOpenAI(routerProvider, routerModel, message);
     } else if (routerProvider.type === 'anthropic') {
       classification = await classifyWithAnthropic(routerProvider, routerModel, message);

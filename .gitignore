@@ -90,6 +90,7 @@ typings/
 
 # Electron-Forge
 out/
+packages/desktop/dist/
 
 # Dev notes
 TODO.md
