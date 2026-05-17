@@ -282,7 +282,9 @@ export function useChat() {
         model,
         parameters: conv.parameters ?? settings.defaultParameters,
         systemPrompt: buildSystemPrompt(conv.systemPrompt, settings),
-        enabledMcpServerIds: settings.mcpServers.filter((s) => s.enabled).map((s) => s.id),
+        enabledMcpServerIds:
+          freshConv.activeMcpServerIds ??
+          settings.mcpServers.filter((s) => s.enabled).map((s) => s.id),
       };
 
       // Run beforeSend hooks

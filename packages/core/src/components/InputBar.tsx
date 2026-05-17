@@ -43,6 +43,7 @@ export default function InputBar({ onSend, onAbort, onClear, onCompact, onTrim, 
   const ctxRef = useRef<HTMLDivElement>(null);
 
   const { settings, mcpStatus, saveSettings, refreshMcpStatus } = useSettingsStore();
+  const updateConversation = useConversationStore((s) => s.updateConversation);
 
   // ── Context window usage ──────────────────────────────────────────────────
   const analyticsRecords = useAnalyticsStore((s) => s.records);
@@ -135,7 +136,14 @@ export default function InputBar({ onSend, onAbort, onClear, onCompact, onTrim, 
   const cycleReasoning = () => setReasoning((r) => REASONING_CYCLE[(REASONING_CYCLE.indexOf(r) + 1) % REASONING_CYCLE.length]);
 
   const mcpServers = settings?.mcpServers ?? [];
-  const enabledCount = mcpServers.filter((s) => s.enabled).length;
+  // Per-conversation active servers: when activeMcpServerIds is set on the conversation,
+  // use that set; otherwise fall back to globally-enabled servers.
+  const convActiveMcpIds: Set<string> | null = activeConv?.activeMcpServerIds
+    ? new Set(activeConv.activeMcpServerIds)
+    : null;
+  const isServerActiveForConv = (id: string) =>
+    convActiveMcpIds ? convActiveMcpIds.has(id) : (mcpServers.find((s) => s.id === id)?.enabled ?? false);
+  const enabledCount = mcpServers.filter((s) => isServerActiveForConv(s.id)).length;
   const canSend = (content.trim().length > 0 || attachments.length > 0) && !isStreaming && !disabled;
 
   return (
@@ -234,7 +242,18 @@ export default function InputBar({ onSend, onAbort, onClear, onCompact, onTrim, 
             </button>
             {mcpOpen && (
               <div className="absolute bottom-full mb-2 left-0 w-72 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-50 py-1.5">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider px-3 pt-1 pb-1.5 font-medium">MCP Servers</p>
+                <div className="flex items-center justify-between px-3 pt-1 pb-1.5">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">MCP Servers</p>
+                  {convActiveMcpIds && (
+                    <button
+                      className="text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                      title="Clear per-conversation overrides and use global settings"
+                      onClick={() => conversationId && updateConversation(conversationId, { activeMcpServerIds: undefined })}
+                    >
+                      reset to global
+                    </button>
+                  )}
+                </div>
                 {mcpServers.map((s) => {
                   const connected = !!mcpStatus[s.id];
                   return (
@@ -257,11 +276,37 @@ export default function InputBar({ onSend, onAbort, onClear, onCompact, onTrim, 
                         {connecting === s.id ? '…' : connected ? 'Disc.' : 'Conn.'}
                       </button>
                       <button
-                        onClick={() => saveSettings({ mcpServers: settings!.mcpServers.map((sv) => sv.id === s.id ? { ...sv, enabled: !sv.enabled } : sv) })}
-                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${s.enabled ? 'border-blue-500 text-blue-300 bg-blue-900/30' : 'border-slate-600 text-slate-500 hover:border-slate-400 hover:text-slate-300'}`}
-                        title={s.enabled ? 'Exclude from chat' : 'Include in chat'}
+                        onClick={() => {
+                          const active = isServerActiveForConv(s.id);
+                          if (conversationId && activeConv) {
+                            // Build updated per-conversation list
+                            const globalEnabled = mcpServers.filter((sv) => sv.enabled).map((sv) => sv.id);
+                            const current = convActiveMcpIds ? [...convActiveMcpIds] : globalEnabled;
+                            const next = active
+                              ? current.filter((id) => id !== s.id)
+                              : [...current, s.id];
+                            // If next matches global enabled exactly, clear the override
+                            const nextSet = new Set(next);
+                            const globalSet = new Set(globalEnabled);
+                            const matchesGlobal =
+                              next.length === globalEnabled.length &&
+                              globalEnabled.every((id) => nextSet.has(id));
+                            updateConversation(conversationId, {
+                              activeMcpServerIds: matchesGlobal ? undefined : next,
+                            });
+                          } else {
+                            // No active conversation — fall back to toggling global setting
+                            saveSettings({ mcpServers: settings!.mcpServers.map((sv) => sv.id === s.id ? { ...sv, enabled: !sv.enabled } : sv) });
+                          }
+                        }}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                          isServerActiveForConv(s.id)
+                            ? 'border-blue-500 text-blue-300 bg-blue-900/30'
+                            : 'border-slate-600 text-slate-500 hover:border-slate-400 hover:text-slate-300'
+                        }`}
+                        title={isServerActiveForConv(s.id) ? 'Exclude from this chat' : 'Include in this chat'}
                       >
-                        {s.enabled ? 'On' : 'Off'}
+                        {isServerActiveForConv(s.id) ? 'On' : 'Off'}
                       </button>
                     </div>
                   );

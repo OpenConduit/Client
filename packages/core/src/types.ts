@@ -105,6 +105,12 @@ export interface Conversation {
   personaId?: string;
   /** Cloud: workspace this conversation belongs to. */
   workspaceId?: string;
+  /**
+   * Per-conversation MCP server overrides.
+   * When set, only these server IDs are used for this conversation (ignoring global enabled state).
+   * When undefined, falls back to globally-enabled servers.
+   */
+  activeMcpServerIds?: string[];
 }
 
 // ─── Token Usage ──────────────────────────────────────────────────────────
