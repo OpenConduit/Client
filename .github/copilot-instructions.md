@@ -1,7 +1,7 @@
 # OpenConduit — Copilot Instructions
 
 ## Project Overview
-OpenConduit is a cross-platform desktop AI chat application built with Electron + React. It supports multiple AI providers (OpenAI, Anthropic, LM Studio), MCP (Model Context Protocol) tool servers, and is packaged with electron-forge for macOS, Windows, and Linux.
+OpenConduit is a cross-platform desktop AI chat application built with Electron + React. It supports multiple AI providers (OpenAI, Anthropic, LM Studio, Google Gemini), MCP (Model Context Protocol) tool servers, intelligent model routing, and is packaged with electron-forge for macOS, Windows, and Linux.
 
 ## Tech Stack
 - **Runtime**: Electron 42 (contextIsolation: true, sandbox: false)
@@ -13,43 +13,31 @@ OpenConduit is a cross-platform desktop AI chat application built with Electron 
 
 ## Repository Structure
 ```
-src/
-  main.ts                    # Electron entry: sets userData path, creates BrowserWindow
-  preload.ts                 # Context bridge — exposes window.api to renderer
-  main/
-    ipc.ts                   # All IPC handlers (ai, mcp, settings, updater, feedback)
-    providers/               # AI provider clients: openai.ts, anthropic.ts, lmstudio.ts
-    mcp/
-      client.ts              # MCP client (HTTP-SSE + stdio transports)
-    store/
-      settings.ts            # electron-store, key: "openconduit-settings"
-  renderer/
-    App.tsx                  # Root component, layout
-    components/
-      ChatArea.tsx           # Main chat view
-      Sidebar.tsx            # Conversation list
-      TopBar.tsx             # Header with macOS traffic light spacing
-      InputBar.tsx           # Message input
-      MessageBubble.tsx      # Single message (supports markdown, tool calls)
-      SettingsPanel.tsx      # All settings tabs + About tab
-      ContextWarningBanner.tsx
-      ToolCallCard.tsx
-      TasksPanel.tsx
-      SystemPromptEditor.tsx
-    stores/
-      conversationStore.ts   # persist key: "openconduit-conversations"
-      settingsStore.ts       # Renderer-side settings mirror
-      analyticsStore.ts      # persist key: "openconduit-analytics"
-      tasksStore.ts
-      uiStore.ts
-  shared/
-    types.ts                 # Shared TypeScript types (AppSettings, Message, etc.)
+packages/
+  core/                      # Shared renderer code (React, hooks, stores, types)
+    src/
+      components/            # React UI components (ChatArea, Sidebar, SettingsPanel, etc.)
+      hooks/                 # useChat, useCompare, useBeforeSend, etc.
+      stores/                # Zustand stores: conversation, settings, ui, analytics, tasks
+      services/              # IPC service wrappers (chat, mcp, settings, routing)
+      data/                  # Provider marketplace registry (providerRegistry.ts, provider-registry.json)
+      styles/                # brand_tokens.css, brand_tokens.json
+      types.ts               # Shared TypeScript types (AppSettings, Message, etc.)
+  desktop/                   # Electron shell
+    src/
+      main.ts                # Electron entry: sets userData path, creates BrowserWindow
+      preload.ts             # Context bridge — exposes window.api to renderer
+      main/
+        ipc.ts               # All IPC handlers (ai, mcp, settings, updater, feedback)
+        providers/           # AI provider clients: openai.ts, anthropic.ts, lmstudio.ts, gemini.ts
+        routing.ts           # Intelligent model routing classifier
+        mcp/
+          client.ts          # MCP client (HTTP-SSE + stdio transports)
+        store/
+          settings.ts        # electron-store, key: "openconduit-settings"
 icons/                       # App icons: icon.icns, favicon.ico, icon-*.png (rounded corners, transparent bg)
 public/
   app-icon.png               # Brand icon served to renderer (About tab)
-src/styles/
-  brand_tokens.css           # CSS custom properties (--color-primary, --color-surface, etc.)
-  brand_tokens.json          # Same tokens as JSON
 docs/brand/                  # Brand reference images (guidelines, palette, typography)
 worker/                      # Cloudflare Worker source (update checks + feedback → GitHub Issues)
 ```
@@ -57,15 +45,15 @@ worker/                      # Cloudflare Worker source (update checks + feedbac
 ## Key Conventions
 
 ### Electron / IPC
-- All Node.js / Electron APIs live in **main process** (`src/main/`). Never import them in renderer.
-- The context bridge in `preload.ts` exposes `window.api` to the renderer.
+- All Node.js / Electron APIs live in **main process** (`packages/desktop/src/main/`). Never import them in renderer (`packages/core/`).
+- The context bridge in `packages/desktop/src/preload.ts` exposes `window.api` to the renderer.
 - IPC channels follow the pattern `ai:*`, `mcp:*`, `settings:*`, `updater:*`.
 - `app.setPath('userData', path.join(app.getPath('appData'), 'openconduit'))` is called before `createWindow` so the path never changes on rename.
 
 ### Tailwind CSS v4
 - Use `@import "tailwindcss"` in CSS files — **not** `@tailwind base/components/utilities`.
 - Brand colors are available as Tailwind classes: `brand-blue`, `brand-violet`, `brand-cyan`, `brand-navy`, `brand-surface`, `brand-muted`, `brand-white`.
-- CSS variables from `src/styles/brand_tokens.css` are also globally available: `var(--color-primary)`, `var(--color-surface)`, etc.
+- CSS variables from `packages/core/src/styles/brand_tokens.css` are also globally available: `var(--color-primary)`, `var(--color-surface)`, etc.
 - Dark mode uses `class` strategy.
 
 ### State Management
@@ -81,9 +69,12 @@ worker/                      # Cloudflare Worker source (update checks + feedbac
 - `__APP_VERSION__` is a Vite-injected global (from `package.json`). Use it in the renderer for display.
 
 ### AI Providers
-- Provider clients are in `src/main/providers/`. Each exports a streaming function that yields delta text.
+- Provider clients are in `packages/desktop/src/main/providers/`. Each exports a streaming function that yields delta text.
+- Supported providers: OpenAI (`openai.ts`), Anthropic (`anthropic.ts`), LM Studio (`lmstudio.ts`), Google Gemini (`gemini.ts`).
 - LM Studio uses the OpenAI-compatible API (`openai.ts` with a custom `baseURL`).
-- MCP tool calls are handled in `src/main/mcp/client.ts` and bridged via IPC.
+- Gemini uses `@google/genai` SDK and maps messages to `role: 'user' | 'model'` — use it as the reference for new providers.
+- The **provider marketplace registry** at `packages/core/src/data/provider-registry.json` drives the provider picker UI. See `AGENTS.md` for the entry schema.
+- MCP tool calls are handled in `packages/desktop/src/main/mcp/client.ts` and bridged via IPC.
 
 ### Cloudflare Worker
 - `GET /latest` → returns `{ version, notes, url }` from GitHub Releases.
