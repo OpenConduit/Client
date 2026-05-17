@@ -2,6 +2,31 @@
 @import "./styles/brand_tokens.css";
 @source "../../core/src";
 
+/* Tailwind v4: class-based dark mode — must be declared in CSS, not config */
+@variant dark (&:where(.dark, .dark *));
+
+/*
+ * Light mode: remap the slate palette so hardcoded dark-slate utility classes
+ * (bg-slate-900, text-slate-300, etc.) render correctly without light/dark variants.
+ * Tailwind v4 utilities reference --color-slate-* via var(), so overriding these
+ * custom properties at a higher specificity wins over the @theme :root defaults.
+ *
+ * The mapping inverts the scale: slate-900 ↔ slate-100, slate-800 ↔ slate-200, etc.
+ */
+html:not(.dark) {
+  --color-slate-50:  oklch(12.9% 0.042 264.695); /* dark end in light mode */
+  --color-slate-100: oklch(20.8% 0.042 265.755);
+  --color-slate-200: oklch(27.9% 0.041 260.031);
+  --color-slate-300: oklch(37.2% 0.044 257.287);
+  --color-slate-400: oklch(44.6% 0.043 257.281);
+  /* slate-500 stays as-is — neutral midpoint */
+  --color-slate-600: oklch(70.4% 0.04 256.788);
+  --color-slate-700: oklch(86.9% 0.022 252.894);
+  --color-slate-800: oklch(92.9% 0.013 255.508);
+  --color-slate-900: oklch(96.8% 0.007 247.896); /* light bg */
+  --color-slate-950: oklch(98.4% 0.003 247.858); /* lightest bg */
+}
+
 @layer base {
   * {
     box-sizing: border-box;

@@ -24,13 +24,19 @@ export default function App() {
     const theme = settings.theme;
     if (theme === 'dark') {
       root.classList.add('dark');
+      return;
     } else if (theme === 'light') {
       root.classList.remove('dark');
-    } else {
-      // system
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      root.classList.toggle('dark', prefersDark);
+      return;
     }
+    // system — apply immediately and watch for OS preference changes
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = (e: MediaQueryListEvent | MediaQueryList) => {
+      root.classList.toggle('dark', e.matches);
+    };
+    apply(mq);
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.theme]);
 
