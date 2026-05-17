@@ -12,6 +12,7 @@ export { default as App } from './App';
 export { default as ChatArea } from './components/ChatArea';
 export { default as Sidebar } from './components/Sidebar';
 export { default as SettingsPanel } from './components/SettingsPanel';
+export type { ExtraTab as SettingsPanelExtraTab } from './components/SettingsPanel';
 export { default as MessageBubble } from './components/MessageBubble';
 export { default as InputBar } from './components/InputBar';
 export { default as TopBar } from './components/TopBar';

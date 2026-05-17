@@ -6,14 +6,41 @@ import { useAnalyticsStore } from '../stores/analyticsStore';
 import type { ProviderConfig, McpServerConfig, AppSettings, ProviderType, McpTransport, McpTool, UpdateInfo, FeedbackPayload } from '../types';
 import { service } from '../services';
 
-type Tab = 'general' | 'providers' | 'mcp' | 'features' | 'labs' | 'analytics' | 'about';
+type Tab = 'general' | 'providers' | 'mcp' | 'features' | 'labs' | 'analytics' | 'about' | string;
 
-export default function SettingsPanel() {
+export interface ExtraTab {
+  id: string;
+  label: string;
+  content: React.ReactNode;
+}
+
+export default function SettingsPanel({
+  extraTabs,
+  hideTabs,
+}: {
+  extraTabs?: ExtraTab[];
+  hideTabs?: string[];
+}) {
   const { showSettings, setShowSettings } = useUiStore();
   const { settings, saveSettings, refreshMcpStatus, mcpStatus } = useSettingsStore();
   const [tab, setTab] = useState<Tab>('general');
 
   if (!showSettings || !settings) return null;
+
+  const builtInTabs: { id: Tab; label: string }[] = [
+    { id: 'general',   label: 'General' },
+    { id: 'providers', label: 'Providers' },
+    { id: 'mcp',       label: 'MCP' },
+    { id: 'features',  label: 'Features' },
+    { id: 'labs',      label: 'Labs' },
+    { id: 'analytics', label: 'Analytics' },
+    { id: 'about',     label: 'About' },
+  ].filter((t) => !hideTabs?.includes(t.id));
+
+  const allTabs = [
+    ...builtInTabs,
+    ...(extraTabs?.map((t) => ({ id: t.id, label: t.label })) ?? []),
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -37,17 +64,17 @@ export default function SettingsPanel() {
 
         {/* Tabs */}
         <div className="flex gap-0.5 px-6 pt-3 flex-shrink-0 border-b border-slate-700/50 overflow-x-auto">
-          {(['general', 'providers', 'mcp', 'features', 'labs', 'analytics', 'about'] as Tab[]).map((t) => (
+          {allTabs.map((t) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={t.id}
+              onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 rounded-t-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                tab === t
+                tab === t.id
                   ? 'bg-slate-800 text-slate-100 border border-b-0 border-slate-700'
                   : 'text-slate-500 hover:text-slate-300'
               }`}
             >
-              {t === 'mcp' ? 'MCP' : t === 'labs' ? 'Labs' : t === 'features' ? 'Features' : t === 'analytics' ? 'Analytics' : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t.label}
             </button>
           ))}
         </div>
@@ -70,6 +97,11 @@ export default function SettingsPanel() {
           {tab === 'features' && <FeaturesTab />}
           {tab === 'analytics' && <AnalyticsTab settings={settings} onSave={saveSettings} />}
           {tab === 'about' && <AboutTab settings={settings} onSave={saveSettings} />}
+          {extraTabs?.map((t) => (
+            <React.Fragment key={t.id}>
+              {tab === t.id && t.content}
+            </React.Fragment>
+          ))}
         </div>
       </div>
     </div>
