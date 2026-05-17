@@ -10,4 +10,10 @@ export default defineConfig({
       '@openconduit/core': path.resolve(__dirname, '../core/src'),
     },
   },
+  build: {
+    rollupOptions: {
+      // Optional native modules used by ws / @google/genai — not needed at runtime
+      external: ['bufferutil', 'utf-8-validate'],
+    },
+  },
 });

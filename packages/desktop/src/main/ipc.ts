@@ -26,6 +26,7 @@ import {
 import { streamAnthropic } from './providers/anthropic';
 import { streamOpenAI } from './providers/openai';
 import { streamLmStudio } from './providers/lmstudio';
+import { streamGemini } from './providers/gemini';
 
 const abortControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
@@ -111,6 +112,31 @@ export function registerIpcHandlers(): void {
       } catch {
         return custom;
       }
+    }
+
+    if (provider.type === 'gemini') {
+      const custom = provider.customModels ?? [];
+      const defaults = [
+        'gemini-2.5-pro-preview-05-06',
+        'gemini-2.5-flash-preview-04-17',
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+        'gemini-1.5-pro',
+        'gemini-1.5-flash',
+      ];
+      try {
+        const { GoogleGenAI } = await import('@google/genai');
+        const ai = new GoogleGenAI({ apiKey: provider.apiKey ?? '' });
+        const fetched: string[] = [];
+        for await (const m of await ai.models.list()) {
+          const name = (m as { name?: string }).name;
+          if (name) fetched.push(name.replace('models/', ''));
+        }
+        if (fetched.length > 0) {
+          return Array.from(new Set([...fetched, ...custom])).sort();
+        }
+      } catch { /* fall through */ }
+      return Array.from(new Set([...defaults, ...custom])).sort();
     }
 
     return provider.customModels ?? [];
@@ -317,6 +343,8 @@ export function registerIpcHandlers(): void {
                 return streamOpenAI(provider, messages, model, parameters, systemPrompt, tools);
               case 'lmstudio':
                 return streamLmStudio(provider, messages, model, parameters, systemPrompt, tools);
+              case 'gemini':
+                return streamGemini(provider, messages, model, parameters, systemPrompt, tools);
             }
           };
 
