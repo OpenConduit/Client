@@ -188,6 +188,7 @@ export function registerIpcHandlers(): void {
     return setSettings(parsed);
   });
 
+
   // ─── Backend constants (not user-configurable) ────────────────────────────
   const GITHUB_REPO = 'OpenConduit/Client';
   // Set WORKER_URL to your deployed Cloudflare Worker once live; leave empty to use GitHub directly.

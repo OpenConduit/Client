@@ -125,7 +125,9 @@ export default function InputBar({ onSend, onAbort, onClear, onCompact, onTrim, 
           },
         ]);
       };
-      if (file.type.startsWith('image/')) reader.readAsDataURL(file);
+      // Images and PDFs stored as base64; text files stored as plain text.
+      // Providers handle PDFs natively (Anthropic/Gemini) or extract text themselves (OpenAI).
+      if (file.type.startsWith('image/') || file.type === 'application/pdf') reader.readAsDataURL(file);
       else reader.readAsText(file);
     });
   };

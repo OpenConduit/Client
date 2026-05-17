@@ -21,6 +21,13 @@ function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
                 data: att.data,
               },
             });
+          } else if (att.mimeType === 'application/pdf' && att.data) {
+            content.push({
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: att.data },
+            } as Anthropic.DocumentBlockParam);
+          } else if (att.data) {
+            content.push({ type: 'text', text: `[Attached file: ${att.name}]\n${att.data}` });
           }
         }
       }
