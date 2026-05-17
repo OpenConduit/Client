@@ -4,12 +4,13 @@ import MessageBubble from './MessageBubble';
 
 interface Props {
   messages: Message[];
+  conversationId?: string;
   onApprove: (toolId: string) => void;
   onDeny: (toolId: string) => void;
   onSendAnswers: (questions: import('../types').AiQuestion[], answers: Record<string, string>) => void;
 }
 
-export default function MessageList({ messages, onApprove, onDeny, onSendAnswers }: Props) {
+export default function MessageList({ messages, conversationId, onApprove, onDeny, onSendAnswers }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function MessageList({ messages, onApprove, onDeny, onSendAnswers
           <MessageBubble
             key={msg.id}
             message={msg}
+            conversationId={conversationId}
             onApprove={onApprove}
             onDeny={onDeny}
             onSendAnswers={onSendAnswers}

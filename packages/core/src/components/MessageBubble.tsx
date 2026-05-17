@@ -1,20 +1,21 @@
 import React, { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import hljs from 'highlight.js';
 import type { Message, AiQuestion } from '../types';
 import ToolCallCard from './ToolCallCard';
 import QuestionsCard from './QuestionsCard';
+import ArtifactBlock from './ArtifactBlock';
 import { useSettingsStore } from '../stores/settingsStore';
 
 interface Props {
   message: Message;
+  conversationId?: string;
   onApprove?: (toolId: string) => void;
   onDeny?: (toolId: string) => void;
   onSendAnswers?: (questions: AiQuestion[], answers: Record<string, string>) => void;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, onApprove, onDeny, onSendAnswers }: Props) {
+const MessageBubble = memo(function MessageBubble({ message, conversationId, onApprove, onDeny, onSendAnswers }: Props) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   const [thinkingOpen, setThinkingOpen] = useState(false);
@@ -115,19 +116,13 @@ const MessageBubble = memo(function MessageBubble({ message, onApprove, onDeny, 
                     const match = /language-(\w+)/.exec(className ?? '');
                     const codeStr = String(children).replace(/\n$/, '');
                     if (match) {
-                      try {
-                        const highlighted = hljs.highlight(codeStr, { language: match[1] });
-                        return (
-                          <pre className="bg-slate-900 rounded-lg overflow-x-auto my-3">
-                            <code
-                              className={`hljs language-${match[1]} text-[12px] p-4 block font-mono leading-relaxed`}
-                              dangerouslySetInnerHTML={{ __html: highlighted.value }}
-                            />
-                          </pre>
-                        );
-                      } catch {
-                        // fall through
-                      }
+                      return (
+                        <ArtifactBlock
+                          language={match[1]}
+                          code={codeStr}
+                          conversationId={conversationId}
+                        />
+                      );
                     }
                     return (
                       <code className="bg-slate-700 text-pink-300 px-1.5 py-0.5 rounded text-[12px] font-mono">
