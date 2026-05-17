@@ -10,6 +10,7 @@ export { default as App } from './App';
 
 // Components (individually exported for use in non-desktop contexts)
 export { default as ChatArea } from './components/ChatArea';
+export { default as CompareArea } from './components/CompareArea';
 export { default as Sidebar } from './components/Sidebar';
 export { default as SettingsPanel } from './components/SettingsPanel';
 export type { ExtraTab as SettingsPanelExtraTab } from './components/SettingsPanel';
@@ -30,6 +31,8 @@ export { useUiStore } from './stores/uiStore';
 
 // Hooks
 export { useChat } from './hooks/useChat';
+export { useCompare } from './hooks/useCompare';
+export type { CompareColumn, CompareMessage } from './hooks/useCompare';
 
 // Utilities
 export { getContextLimit, estimateTokens, fmtTok } from './utils/context';

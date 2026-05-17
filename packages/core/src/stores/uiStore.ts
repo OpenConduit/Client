@@ -19,6 +19,8 @@ interface UiState {
   setShowParameters: (v: boolean) => void;
   isCompacting: boolean;
   setIsCompacting: (v: boolean) => void;
+  isCompareMode: boolean;
+  setCompareMode: (v: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -50,4 +52,7 @@ export const useUiStore = create<UiState>()((set) => ({
 
   isCompacting: false,
   setIsCompacting: (v) => set({ isCompacting: v }),
+
+  isCompareMode: false,
+  setCompareMode: (v) => set({ isCompareMode: v }),
 }));
