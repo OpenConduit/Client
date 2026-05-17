@@ -4,6 +4,8 @@ import type {
   FeedbackPayload,
   McpServerConfig,
   McpTool,
+  RoutingConfig,
+  RoutingDecision,
   StreamChunk,
   StreamEnd,
   StreamError,
@@ -56,5 +58,15 @@ export interface AppService {
   config: {
     exportSettings(redact: boolean): Promise<boolean>;
     importSettings(): Promise<AppSettings | null>;
+  };
+  routing: {
+    evaluate(params: {
+      message: string;
+      routerProviderId: string;
+      routerModel: string;
+      config: RoutingConfig;
+      originalProviderId: string;
+      originalModel: string;
+    }): Promise<RoutingDecision>;
   };
 }

@@ -24,4 +24,5 @@ export const service: AppService = {
   get models() { return _instance!.models; },
   get updater() { return _instance!.updater; },
   get config() { return _instance!.config; },
+  get routing() { return _instance!.routing; },
 } satisfies AppService;

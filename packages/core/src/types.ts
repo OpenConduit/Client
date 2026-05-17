@@ -87,6 +87,8 @@ export interface Message {
   providerId?: string;
   /** Token usage for this assistant turn (populated after stream ends) */
   usage?: TokenUsage;
+  /** Populated when intelligent routing overrode the default model. */
+  routingDecision?: RoutingDecision;
 }
 
 // ─── Conversation Types ────────────────────────────────────────────────────
@@ -101,6 +103,8 @@ export interface Conversation {
   providerId?: string;
   model?: string;
   parameters?: ModelParameters;
+  /** When set, routing is driven by this profile instead of the global routing config. */
+  routingProfileId?: string;
   /** Cloud: persona assigned to this conversation. */
   personaId?: string;
   /** Cloud: workspace this conversation belongs to. */
@@ -175,6 +179,65 @@ export interface AiQuestion {
   allowOther?: boolean;
 }
 
+// ─── Intelligent Routing ───────────────────────────────────────────────────
+
+export type RoutingTaskType = 'writing' | 'code' | 'tools' | 'reasoning' | 'general';
+
+/** Maps a minimum complexity score to an explicit provider + model */
+export interface RoutingTier {
+  /** Minimum complexity score (1–3) that triggers this tier */
+  minComplexity: 1 | 2 | 3;
+  providerId: string;
+  model: string;
+  /** Display label, e.g. "Simple", "Complex" */
+  label?: string;
+}
+
+/** Maps a task type category to a preferred provider + model */
+export interface RoutingProviderRule {
+  taskType: RoutingTaskType;
+  providerId: string;
+  model: string;
+}
+
+export interface RoutingConfig {
+  enabled: boolean;
+  /** Provider used to run the cheap router classification call */
+  routerProviderId?: string;
+  /** Model used for classification, e.g. "claude-haiku-3-5", "gpt-4o-mini" */
+  routerModel?: string;
+  tierRouting: {
+    enabled: boolean;
+    /** Tiers sorted by minComplexity desc — first match wins */
+    tiers: RoutingTier[];
+  };
+  providerRouting: {
+    enabled: boolean;
+    rules: RoutingProviderRule[];
+  };
+}
+
+/** A saved, named routing configuration that can be applied per-conversation. */
+export interface RoutingProfile {
+  id: string;
+  name: string;
+  config: RoutingConfig;
+}
+
+/** Result of a single routing evaluation, stored on the assistant Message */
+export interface RoutingDecision {
+  complexity: 1 | 2 | 3;
+  taskType: RoutingTaskType;
+  /** Provider ultimately used (may differ from conversation default) */
+  finalProviderId: string;
+  finalModel: string;
+  /** Original conversation default — for "saved vs …" display */
+  originalProviderId: string;
+  originalModel: string;
+  /** Short human-readable reason, e.g. "Complexity 3 → powerful tier" */
+  reason: string;
+}
+
 // ─── App Settings ──────────────────────────────────────────────────────────
 
 export interface AppSettings {
@@ -197,6 +260,10 @@ export interface AppSettings {
   modelPricing?: ModelPricing;
   /** Which release channel to check for updates */
   updateChannel?: 'stable' | 'beta' | 'alpha';
+  /** Intelligent model routing configuration (global default) */
+  routing?: RoutingConfig;
+  /** Named routing profiles — can be assigned per-conversation via routingProfileId */
+  routingProfiles?: RoutingProfile[];
 }
 
 // ─── IPC Channel Names ─────────────────────────────────────────────────────
@@ -236,11 +303,18 @@ export const IPC = {
   // Config export/import
   SETTINGS_EXPORT: 'settings:export',
   SETTINGS_IMPORT: 'settings:import',
+
+  // Routing
+  ROUTING_EVALUATE: 'routing:evaluate',
 } as const;
 
 // ─── Chat Request / Response ────────────────────────────────────────────────
 
 export interface ChatRequest {
+  /** Optionally pre-supply the messageId so the renderer can add the
+   *  placeholder message before calling send, eliminating the race condition
+   *  where a STREAM_ERROR can arrive before the placeholder exists. */
+  messageId?: string;
   conversationId: string;
   messages: Message[];
   providerId: string;

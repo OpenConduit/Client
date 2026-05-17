@@ -174,6 +174,21 @@ const MessageBubble = memo(function MessageBubble({ message, onApprove, onDeny, 
           {message.model && (
             <span className="text-[10px] text-slate-500">{message.model}</span>
           )}
+          {/* Routing indicator */}
+          {isAssistant && message.routingDecision &&
+            (message.routingDecision.finalModel !== message.routingDecision.originalModel ||
+              message.routingDecision.finalProviderId !== message.routingDecision.originalProviderId) && (
+            <span className="relative group cursor-help flex items-center gap-1">
+              <span className="text-[10px] text-slate-600">·</span>
+              <span className="text-[10px] text-slate-600">
+                c{message.routingDecision.complexity}
+              </span>
+              <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-max max-w-[220px] rounded bg-slate-800 border border-slate-700 px-2 py-1 text-[10px] text-slate-300 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50 shadow-lg">
+                <span className="block font-medium text-slate-200 mb-0.5">{message.routingDecision.reason}</span>
+                <span className="text-slate-400">task · {message.routingDecision.taskType}</span>
+              </span>
+            </span>
+          )}
           <span className="text-[10px] text-slate-600">
             {(() => {
               const d = new Date(message.timestamp);
@@ -225,6 +240,43 @@ const MessageBubble = memo(function MessageBubble({ message, onApprove, onDeny, 
             </button>
           )}
         </div>
+
+        {/* Routing debug panel — only when Labs › Debug Mode is on */}
+        {debugMode && isAssistant && message.routingDecision && (
+          <div className="mt-1.5 mx-1 rounded border border-blue-700/30 bg-blue-950/20 px-2.5 py-1.5 text-[10px] text-slate-400 font-mono space-y-0.5">
+            <div className="text-blue-400/70 font-sans font-semibold tracking-wide mb-1">routing debug</div>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+              <span>
+                <span className="text-slate-500">complexity </span>
+                <span className={
+                  message.routingDecision.complexity === 3 ? 'text-red-400' :
+                  message.routingDecision.complexity === 2 ? 'text-yellow-400' :
+                  'text-green-400'
+                }>{message.routingDecision.complexity}</span>
+              </span>
+              <span>
+                <span className="text-slate-500">task </span>
+                <span className="text-slate-300">{message.routingDecision.taskType}</span>
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500">original </span>
+              <span className="text-slate-300">{message.routingDecision.originalProviderId} / {message.routingDecision.originalModel}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">final    </span>
+              <span className={
+                message.routingDecision.finalModel !== message.routingDecision.originalModel ||
+                message.routingDecision.finalProviderId !== message.routingDecision.originalProviderId
+                  ? 'text-blue-300' : 'text-slate-300'
+              }>{message.routingDecision.finalProviderId} / {message.routingDecision.finalModel}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">reason   </span>
+              <span className="text-slate-300">{message.routingDecision.reason}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* User avatar */}

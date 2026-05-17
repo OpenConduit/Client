@@ -10,6 +10,8 @@ import type {
   ToolApprovalRequest,
   UpdateInfo,
   FeedbackPayload,
+  RoutingConfig,
+  RoutingDecision,
 } from './shared/types';
 import { IPC } from './shared/types';
 
@@ -103,5 +105,16 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke(IPC.SETTINGS_EXPORT, redact),
     importSettings: (): Promise<AppSettings | null> =>
       ipcRenderer.invoke(IPC.SETTINGS_IMPORT),
+  },
+  routing: {
+    evaluate: (params: {
+      message: string;
+      routerProviderId: string;
+      routerModel: string;
+      config: RoutingConfig;
+      originalProviderId: string;
+      originalModel: string;
+    }): Promise<RoutingDecision> =>
+      ipcRenderer.invoke(IPC.ROUTING_EVALUATE, params),
   },
 });

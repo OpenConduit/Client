@@ -17,6 +17,8 @@ export interface CompareColumn {
   id: string;
   providerId: string;
   model: string;
+  /** If set, routing is resolved dynamically before each send. */
+  routingProfileId?: string;
   /** Current in-flight messageId — used to route incoming stream events. */
   messageId: string | null;
   /** Full conversation thread for this column. */
@@ -150,7 +152,7 @@ export function useCompare() {
             { role: 'assistant', content: '' },
           ],
           messageId: null,
-          isStreaming: !!(c.providerId && c.model),
+          isStreaming: !!(c.providerId && c.model) || !!c.routingProfileId,
           error: null,
           startedAt: Date.now(),
           endedAt: null,
@@ -162,12 +164,61 @@ export function useCompare() {
 
       await Promise.allSettled(
         colsSnapshot.map(async (col) => {
-          if (!col.providerId || !col.model) return;
           const convId = `compare-${newSession}-${col.id}`;
+
+          // Resolve routing profile → actual provider/model if needed
+          let resolvedProviderId = col.providerId;
+          let resolvedModel = col.model;
+          if (col.routingProfileId) {
+            const profile = settings.routingProfiles?.find((p) => p.id === col.routingProfileId);
+            const cfg = profile?.config;
+            if (
+              cfg?.enabled &&
+              cfg.routerProviderId &&
+              cfg.routerModel &&
+              (cfg.tierRouting?.enabled || cfg.providerRouting?.enabled)
+            ) {
+              try {
+                const decision = await service.routing.evaluate({
+                  message: prompt,
+                  routerProviderId: cfg.routerProviderId,
+                  routerModel: cfg.routerModel,
+                  config: cfg,
+                  originalProviderId: settings.defaultProviderId ?? col.providerId,
+                  originalModel: settings.defaultModel ?? col.model,
+                });
+                resolvedProviderId = decision.finalProviderId;
+                resolvedModel = decision.finalModel;
+                // Persist routed model so the column label reflects it
+                setColumns((cols) =>
+                  cols.map((c) =>
+                    c.id === col.id
+                      ? { ...c, providerId: resolvedProviderId, model: resolvedModel }
+                      : c,
+                  ),
+                );
+              } catch {
+                // Routing failed — fall through without a resolved model
+              }
+            }
+          }
+
+          if (!resolvedProviderId || !resolvedModel) {
+            setColumns((cols) =>
+              cols.map((c) =>
+                c.id === col.id
+                  ? { ...c, isStreaming: false, error: 'No model selected', endedAt: Date.now() }
+                  : c,
+              ),
+            );
+            return;
+          }
 
           // Build full message history for this column (prior turns + new user msg)
           const history = [
-            ...col.messages,
+            ...col.messages.filter(
+              (m) => m.role !== 'assistant' || !!m.content,
+            ),
             { role: 'user' as const, content: prompt },
           ].map((m) => ({
             id: uuidv4(),
@@ -180,8 +231,8 @@ export function useCompare() {
             const { messageId } = await service.chat.send({
               conversationId: convId,
               messages: history,
-              providerId: col.providerId,
-              model: col.model,
+              providerId: resolvedProviderId,
+              model: resolvedModel,
               parameters: settings.defaultParameters,
               enabledMcpServerIds: [],
             });
@@ -234,7 +285,7 @@ export function useCompare() {
   }, []);
 
   const updateColumn = useCallback(
-    (id: string, updates: Partial<Pick<CompareColumn, 'providerId' | 'model'>>) => {
+    (id: string, updates: Partial<Pick<CompareColumn, 'providerId' | 'model' | 'routingProfileId'>>) => {
       setColumns((cols) =>
         cols.map((c) =>
           c.id === id
