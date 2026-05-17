@@ -2,7 +2,7 @@
   "name": "openconduit-monorepo",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/desktop"
   ],
   "scripts": {
     "start": "npm start -w packages/desktop",

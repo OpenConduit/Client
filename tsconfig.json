@@ -12,10 +12,7 @@
     "resolveJsonModule": true,
     "jsx": "react-jsx",
     "strict": false,
-    "paths": {
-      "@openconduit/core": ["packages/core/src/index.ts"],
-      "@openconduit/core/*": ["packages/core/src/*"]
-    }
+    "paths": {}
   },
-  "include": ["packages/**/*"]
+  "include": ["src/**/*", "packages/**/*"]
 }
