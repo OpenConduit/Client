@@ -12,7 +12,8 @@
     "resolveJsonModule": true,
     "jsx": "react-jsx",
     "strict": false,
-    "paths": {}
+    "paths": {},
+    "types": ["vite/client"]
   },
   "include": ["src/**/*", "packages/**/*"]
 }
