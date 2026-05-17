@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useUiStore } from '../stores/uiStore';
 import { useAnalyticsStore } from '../stores/analyticsStore';
-import type { ProviderConfig, McpServerConfig, AppSettings, ProviderType, McpTransport, McpTool, UpdateInfo, FeedbackPayload } from '../types';
+import type { ProviderConfig, McpServerConfig, AppSettings, ProviderType, McpTransport, McpTool, UpdateInfo, FeedbackPayload, RoutingConfig, RoutingTier, RoutingProviderRule, RoutingTaskType, RoutingProfile } from '../types';
 import { service } from '../services';
 import { McpMarketplace, ProviderMarketplace } from './MarketplacePanel';
 
@@ -95,7 +95,7 @@ export default function SettingsPanel({
             />
           )}
           {tab === 'labs' && <LabsTab settings={settings} onSave={saveSettings} />}
-          {tab === 'features' && <FeaturesTab />}
+          {tab === 'features' && <FeaturesTab settings={settings} onSave={saveSettings} />}
           {tab === 'analytics' && <AnalyticsTab settings={settings} onSave={saveSettings} />}
           {tab === 'about' && <AboutTab settings={settings} onSave={saveSettings} />}
           {extraTabs?.map((t) => (
@@ -1176,13 +1176,450 @@ function ModelsField({
 
 // ─── Features Tab ─────────────────────────────────────────────────────────────
 
-function FeaturesTab() {
+function FeaturesTab({
+  settings,
+  onSave,
+}: {
+  settings: AppSettings;
+  onSave: (p: Partial<AppSettings>) => Promise<void>;
+}) {
+  const routing = settings.routing;
+  const [showRoutingConfig, setShowRoutingConfig] = React.useState(false);
+
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center select-none">
-      <p className="text-sm font-medium text-slate-400">No features yet</p>
-      <p className="text-xs text-slate-600 mt-1.5 max-w-xs">
-        Experimental features that prove themselves graduate here from Labs. Check back after trying things out.
-      </p>
+    <div className="space-y-6">
+      <div className="flex items-start gap-3 rounded-xl bg-blue-950/30 border border-blue-800/40 px-4 py-3">
+        <span className="text-lg mt-0.5">✨</span>
+        <div>
+          <p className="text-sm font-medium text-blue-300">Shipped Features</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Stable features you can enable or disable.
+          </p>
+        </div>
+      </div>
+
+      <Section title="AI Capabilities">
+        <FeatureRow
+          title="Intelligent Model Routing"
+          description="Automatically routes each prompt to the best model based on complexity or task type."
+          value={routing?.enabled ?? false}
+          onChange={(v) =>
+            onSave({
+              routing: {
+                enabled: v,
+                routerProviderId: routing?.routerProviderId,
+                routerModel: routing?.routerModel,
+                tierRouting: routing?.tierRouting ?? { enabled: false, tiers: [] },
+                providerRouting: routing?.providerRouting ?? { enabled: false, rules: [] },
+              },
+            })
+          }
+          onConfigure={() => setShowRoutingConfig((o) => !o)}
+          configOpen={showRoutingConfig}
+        />
+        {showRoutingConfig && (
+          <div className="rounded-xl border border-slate-700/60 bg-slate-900/40 p-4 -mt-1">
+            <RoutingConfig settings={settings} onSave={onSave} />
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+function FeatureRow({
+  title,
+  description,
+  value,
+  onChange,
+  onConfigure,
+  configOpen,
+}: {
+  title: string;
+  description: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  onConfigure?: () => void;
+  configOpen?: boolean;
+}) {
+  return (
+    <div className={`rounded-xl bg-slate-800/40 border px-4 py-3 ${
+      configOpen ? 'border-blue-700/60 rounded-b-none' : 'border-slate-700/50'
+    }`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-slate-200">{title}</p>
+          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{description}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+          {onConfigure && (
+            <button
+              onClick={onConfigure}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors px-2 py-0.5 rounded border border-blue-700/50 hover:border-blue-500/70"
+            >
+              {configOpen ? 'Close' : 'Configure'}
+            </button>
+          )}
+          <Toggle value={value} onChange={onChange} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Routing Config (inline panel) ────────────────────────────────────────────
+
+const TASK_TYPES: RoutingTaskType[] = ['writing', 'code', 'tools', 'reasoning', 'general'];
+
+const DEFAULT_ROUTING: RoutingConfig = {
+  enabled: false,
+  routerProviderId: undefined,
+  routerModel: undefined,
+  tierRouting: { enabled: false, tiers: [] },
+  providerRouting: { enabled: false, rules: [] },
+};
+
+function RoutingConfig({
+  settings,
+  onSave,
+}: {
+  settings: AppSettings;
+  onSave: (p: Partial<AppSettings>) => Promise<void>;
+}) {
+  const routing: RoutingConfig = settings.routing ?? DEFAULT_ROUTING;
+  const { models, loadModels } = useSettingsStore();
+
+  const saveRouting = (partial: Partial<RoutingConfig>) => {
+    onSave({ routing: { ...routing, ...partial } });
+  };
+
+  const routerProvider = settings.providers.find((p) => p.id === routing.routerProviderId);
+
+  const handleRouterProviderChange = (id: string) => {
+    saveRouting({ routerProviderId: id, routerModel: undefined });
+    if (id) loadModels(id);
+  };
+
+  React.useEffect(() => {
+    if (routing.routerProviderId) loadModels(routing.routerProviderId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routing.routerProviderId]);
+
+  const routerModels = routing.routerProviderId ? (models[routing.routerProviderId] ?? []) : [];
+
+  // ── Tier helpers ──────────────────────────────────────────────────────────
+  const addTier = () => {
+    const used = routing.tierRouting.tiers.map((t) => t.minComplexity);
+    const next = ([1, 2, 3] as const).find((n) => !used.includes(n));
+    if (!next) return;
+    saveRouting({
+      tierRouting: {
+        ...routing.tierRouting,
+        tiers: [...routing.tierRouting.tiers, { minComplexity: next, providerId: '', model: '', label: '' }],
+      },
+    });
+  };
+
+  const updateTier = (idx: number, patch: Partial<RoutingTier>) => {
+    const tiers = routing.tierRouting.tiers.map((t, i) => (i === idx ? { ...t, ...patch } : t));
+    if (patch.providerId) loadModels(patch.providerId);
+    saveRouting({ tierRouting: { ...routing.tierRouting, tiers } });
+  };
+
+  const removeTier = (idx: number) => {
+    saveRouting({ tierRouting: { ...routing.tierRouting, tiers: routing.tierRouting.tiers.filter((_, i) => i !== idx) } });
+  };
+
+  // ── Provider rule helpers ─────────────────────────────────────────────────
+  const addProviderRule = () => {
+    const used = routing.providerRouting.rules.map((r) => r.taskType);
+    const nextType = TASK_TYPES.find((t) => !used.includes(t)) ?? 'general';
+    saveRouting({
+      providerRouting: {
+        ...routing.providerRouting,
+        rules: [...routing.providerRouting.rules, { taskType: nextType, providerId: '', model: '' }],
+      },
+    });
+  };
+
+  const updateRule = (idx: number, patch: Partial<RoutingProviderRule>) => {
+    const rules = routing.providerRouting.rules.map((r, i) => (i === idx ? { ...r, ...patch } : r));
+    if (patch.providerId) loadModels(patch.providerId);
+    saveRouting({ providerRouting: { ...routing.providerRouting, rules } });
+  };
+
+  const removeRule = (idx: number) => {
+    saveRouting({ providerRouting: { ...routing.providerRouting, rules: routing.providerRouting.rules.filter((_, i) => i !== idx) } });
+  };
+
+  // ── Profile helpers ───────────────────────────────────────────────────────
+  const profiles: RoutingProfile[] = settings.routingProfiles ?? [];
+  const [newProfileName, setNewProfileName] = React.useState('');
+  const [addingProfile, setAddingProfile] = React.useState(false);
+
+  const confirmSaveProfile = () => {
+    const name = newProfileName.trim();
+    if (!name) return;
+    const newProfile: RoutingProfile = {
+      id: crypto.randomUUID(),
+      name,
+      config: { ...routing, enabled: true }, // profiles are always active by definition
+    };
+    onSave({ routingProfiles: [...profiles, newProfile] });
+    setNewProfileName('');
+    setAddingProfile(false);
+  };
+
+  const deleteProfile = (id: string) => {
+    onSave({ routingProfiles: profiles.filter((p) => p.id !== id) });
+  };
+
+  const loadProfile = (profile: RoutingProfile) => {
+    onSave({ routing: { ...profile.config } });
+  };
+
+  const sel = 'bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500';
+  const selFull = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500';
+  const btnSm = 'text-xs px-2.5 py-1 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 transition-colors';
+  const removeBtn = 'text-slate-500 hover:text-red-400 transition-colors flex-shrink-0';
+
+  return (
+    <div className="space-y-6">
+      {/* Saved Profiles */}
+      <Section title="Saved Profiles">
+        <p className="text-xs text-slate-500 -mt-1 mb-3">
+          Save the current config as a named profile. Profiles can be selected per-conversation from the model picker in the top bar.
+        </p>
+        {profiles.length > 0 && (
+          <div className="space-y-1 mb-3">
+            {profiles.map((profile) => (
+              <div key={profile.id} className="flex items-center gap-2 bg-slate-800/50 rounded-xl px-3 py-2">
+                <span className="text-blue-400 text-sm">🔀</span>
+                <span className="text-sm text-slate-200 flex-1 truncate">{profile.name}</span>
+                <button
+                  onClick={() => loadProfile(profile)}
+                  className={`${btnSm} text-[11px]`}
+                  title="Load this profile into the config editor below"
+                >
+                  Load
+                </button>
+                <button
+                  onClick={() => deleteProfile(profile.id)}
+                  className={removeBtn}
+                  title="Delete profile"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {addingProfile ? (
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              autoFocus
+              value={newProfileName}
+              onChange={(e) => setNewProfileName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmSaveProfile();
+                if (e.key === 'Escape') { setAddingProfile(false); setNewProfileName(''); }
+              }}
+              placeholder="Profile name…"
+              className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-500"
+            />
+            <button onClick={confirmSaveProfile} disabled={!newProfileName.trim()} className={`${btnSm} border-blue-600 text-blue-300 hover:bg-blue-900/30 disabled:opacity-40`}>Save</button>
+            <button onClick={() => { setAddingProfile(false); setNewProfileName(''); }} className={btnSm}>Cancel</button>
+          </div>
+        ) : (
+          <button onClick={() => setAddingProfile(true)} className={btnSm}>
+            + Save current config as profile…
+          </button>
+        )}
+      </Section>
+
+      {/* Classifier model */}
+      <Section title="Classifier Model">
+        <p className="text-xs text-slate-500 -mt-1 mb-3">
+          A fast, cheap model that classifies each prompt before routing. Adds ~100 ms.
+          Recommended: <span className="text-slate-400">claude-haiku-3-5</span> or <span className="text-slate-400">gpt-4o-mini</span>.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Provider</label>
+            <select
+              className={selFull}
+              value={routing.routerProviderId ?? ''}
+              onChange={(e) => handleRouterProviderChange(e.target.value)}
+            >
+              <option value="">Select provider…</option>
+              {settings.providers.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Model</label>
+            <select
+              className={selFull}
+              value={routing.routerModel ?? ''}
+              onChange={(e) => saveRouting({ routerModel: e.target.value })}
+              disabled={!routing.routerProviderId}
+            >
+              <option value="">Select model…</option>
+              {routerProvider?.customModels?.map((m) => <option key={m} value={m}>{m}</option>)}
+              {routerModels.filter((m) => !routerProvider?.customModels?.includes(m)).map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Section>
+
+      {/* Complexity tiers */}
+      <Section title="Complexity Tiers">
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            The classifier scores each prompt 1 (simple) → 3 (complex).
+            Map each score threshold to a provider and model. The highest matching tier wins.
+          </p>
+          <Toggle
+            size="sm"
+            value={routing.tierRouting.enabled}
+            onChange={(v) => saveRouting({ tierRouting: { ...routing.tierRouting, enabled: v } })}
+          />
+        </div>
+
+        {routing.tierRouting.enabled && (
+          <>
+            <div className="space-y-2">
+              {routing.tierRouting.tiers.length === 0 && (
+                <p className="text-xs text-slate-600 italic py-1">No tiers configured yet.</p>
+              )}
+              {routing.tierRouting.tiers.map((tier, idx) => {
+                const tierModels = tier.providerId ? (models[tier.providerId] ?? []) : [];
+                const tierProv = settings.providers.find((p) => p.id === tier.providerId);
+                return (
+                  <div key={idx} className="flex items-center gap-2 bg-slate-800/50 rounded-xl px-3 py-2">
+                    <select
+                      className={`${sel} w-28`}
+                      value={tier.minComplexity}
+                      onChange={(e) => updateTier(idx, { minComplexity: Number(e.target.value) as 1 | 2 | 3 })}
+                    >
+                      <option value={1}>Score ≥ 1</option>
+                      <option value={2}>Score ≥ 2</option>
+                      <option value={3}>Score ≥ 3</option>
+                    </select>
+                    <input
+                      className={`${sel} w-24`}
+                      placeholder="Label…"
+                      value={tier.label ?? ''}
+                      onChange={(e) => updateTier(idx, { label: e.target.value })}
+                    />
+                    <select
+                      className={`${sel} flex-1`}
+                      value={tier.providerId}
+                      onChange={(e) => updateTier(idx, { providerId: e.target.value, model: '' })}
+                    >
+                      <option value="">Provider…</option>
+                      {settings.providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <select
+                      className={`${sel} flex-1`}
+                      value={tier.model}
+                      onChange={(e) => updateTier(idx, { model: e.target.value })}
+                      disabled={!tier.providerId}
+                    >
+                      <option value="">Model…</option>
+                      {tierProv?.customModels?.map((m) => <option key={m} value={m}>{m}</option>)}
+                      {tierModels.filter((m) => !tierProv?.customModels?.includes(m)).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => removeTier(idx)} className={removeBtn} title="Remove">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {routing.tierRouting.tiers.length < 3 && (
+              <button onClick={addTier} className={`${btnSm} mt-2`}>+ Add tier</button>
+            )}
+          </>
+        )}
+      </Section>
+
+      {/* Task-type rules */}
+      <Section title="Task-Type Rules">
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Route by intent: writing, code, tools, reasoning, or general.
+            Tier routing takes precedence over task-type rules when both are active.
+          </p>
+          <Toggle
+            size="sm"
+            value={routing.providerRouting.enabled}
+            onChange={(v) => saveRouting({ providerRouting: { ...routing.providerRouting, enabled: v } })}
+          />
+        </div>
+
+        {routing.providerRouting.enabled && (
+          <>
+            <div className="space-y-2">
+              {routing.providerRouting.rules.length === 0 && (
+                <p className="text-xs text-slate-600 italic py-1">No rules configured yet.</p>
+              )}
+              {routing.providerRouting.rules.map((rule, idx) => {
+                const ruleModels = rule.providerId ? (models[rule.providerId] ?? []) : [];
+                const ruleProv = settings.providers.find((p) => p.id === rule.providerId);
+                return (
+                  <div key={idx} className="flex items-center gap-2 bg-slate-800/50 rounded-xl px-3 py-2">
+                    <select
+                      className={`${sel} w-28`}
+                      value={rule.taskType}
+                      onChange={(e) => updateRule(idx, { taskType: e.target.value as RoutingTaskType })}
+                    >
+                      {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <select
+                      className={`${sel} flex-1`}
+                      value={rule.providerId}
+                      onChange={(e) => updateRule(idx, { providerId: e.target.value, model: '' })}
+                    >
+                      <option value="">Provider…</option>
+                      {settings.providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <select
+                      className={`${sel} flex-1`}
+                      value={rule.model}
+                      onChange={(e) => updateRule(idx, { model: e.target.value })}
+                      disabled={!rule.providerId}
+                    >
+                      <option value="">Model…</option>
+                      {ruleProv?.customModels?.map((m) => <option key={m} value={m}>{m}</option>)}
+                      {ruleModels.filter((m) => !ruleProv?.customModels?.includes(m)).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <button onClick={() => removeRule(idx)} className={removeBtn} title="Remove">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {routing.providerRouting.rules.length < TASK_TYPES.length && (
+              <button onClick={addProviderRule} className={`${btnSm} mt-2`}>+ Add rule</button>
+            )}
+          </>
+        )}
+      </Section>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { ChatRequest, Message, StreamChunk, StreamEnd, StreamError, ToolApprovalRequest, Attachment, AiTask, AiQuestion, AppSettings } from '../types';
+import type { ChatRequest, Message, StreamChunk, StreamEnd, StreamError, ToolApprovalRequest, Attachment, AiTask, AiQuestion, AppSettings, RoutingDecision } from '../types';
 import { hookRegistry } from './hookRegistry';
 import { useConversationStore } from '../stores/conversationStore';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -277,7 +277,11 @@ export function useChat() {
 
       let request: ChatRequest = {
         conversationId: activeConversationId,
-        messages: freshConv.messages,
+        // Strip any empty assistant placeholders left over from prior failed turns
+        // so they don't get forwarded to the provider as `content: null`.
+        messages: freshConv.messages.filter(
+          (m) => m.role !== 'assistant' || !!(m.content || m.toolCalls?.length),
+        ),
         providerId,
         model,
         parameters: conv.parameters ?? settings.defaultParameters,
@@ -290,20 +294,60 @@ export function useChat() {
       // Run beforeSend hooks
       request = await hookRegistry.runBeforeSend(request);
 
+      // ── Intelligent routing ──────────────────────────────────────────────
+      let routingDecision: RoutingDecision | undefined;
+      // Per-conversation profile takes precedence over global routing config
+      const routingCfg = conv.routingProfileId
+        ? settings.routingProfiles?.find((p) => p.id === conv.routingProfileId)?.config
+        : settings.routing;
+      if (
+        routingCfg?.enabled &&
+        routingCfg.routerProviderId &&
+        routingCfg.routerModel &&
+        (routingCfg.tierRouting?.enabled || routingCfg.providerRouting?.enabled)
+      ) {
+        try {
+          routingDecision = await service.routing.evaluate({
+            message: content,
+            routerProviderId: routingCfg.routerProviderId,
+            routerModel: routingCfg.routerModel,
+            config: routingCfg,
+            originalProviderId: providerId,
+            originalModel: model,
+          });
+          if (routingDecision.finalProviderId !== providerId || routingDecision.finalModel !== model) {
+            request = {
+              ...request,
+              providerId: routingDecision.finalProviderId,
+              model: routingDecision.finalModel,
+            };
+          }
+        } catch {
+          // Routing failure is non-fatal — proceed with original model
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────
+
       setIsStreaming(true);
 
-      const { messageId } = await service.chat.send(request);
-
-      // Add placeholder assistant message
+      // Pre-generate messageId and add the placeholder BEFORE calling send.
+      // This eliminates the race condition where a STREAM_ERROR (e.g. provider
+      // not found after routing redirect) arrives before the invoke resolves,
+      // causing updateMessage to silently drop the error because the message
+      // doesn't exist in the store yet.
+      const messageId = uuidv4();
       addMessage(activeConversationId, {
         id: messageId,
         role: 'assistant',
         content: '',
         isStreaming: true,
         timestamp: Date.now(),
-        model,
-        providerId,
+        model: routingDecision?.finalModel ?? model,
+        providerId: routingDecision?.finalProviderId ?? providerId,
+        routingDecision,
       });
+
+      await service.chat.send({ ...request, messageId });
     },
     [activeConversationId, settings, isStreaming, addMessage, updateConversation, setIsStreaming],
   );
@@ -359,7 +403,7 @@ export function useChat() {
     };
 
     try {
-      const { messageId } = await service.chat.send(request);
+      const messageId = uuidv4();
       compactingRequests.add(messageId);
       addMessage(activeConversationId, {
         id: messageId,
@@ -370,6 +414,7 @@ export function useChat() {
         model,
         providerId,
       });
+      await service.chat.send({ ...request, messageId });
     } catch {
       useUiStore.getState().setIsCompacting(false);
       setIsStreaming(false);

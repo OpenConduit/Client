@@ -14,6 +14,8 @@ import {
   ToolApprovalRequest,
   UpdateInfo,
   FeedbackPayload,
+  RoutingConfig,
+  RoutingDecision,
 } from '../shared/types';
 import { getSettings, setSettings } from './store/settings';
 import {
@@ -27,6 +29,7 @@ import { streamAnthropic } from './providers/anthropic';
 import { streamOpenAI } from './providers/openai';
 import { streamLmStudio } from './providers/lmstudio';
 import { streamGemini } from './providers/gemini';
+import { evaluateRouting } from './routing';
 
 const abortControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
@@ -188,6 +191,44 @@ export function registerIpcHandlers(): void {
     return setSettings(parsed);
   });
 
+  // ─── Routing Evaluation ────────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC.ROUTING_EVALUATE,
+    async (
+      _e,
+      params: {
+        message: string;
+        routerProviderId: string;
+        routerModel: string;
+        config: RoutingConfig;
+        originalProviderId: string;
+        originalModel: string;
+      },
+    ): Promise<RoutingDecision> => {
+      const settings = getSettings();
+      const routerProvider = settings.providers.find((p) => p.id === params.routerProviderId);
+      if (!routerProvider) {
+        return {
+          complexity: 1,
+          taskType: 'general',
+          finalProviderId: params.originalProviderId,
+          finalModel: params.originalModel,
+          originalProviderId: params.originalProviderId,
+          originalModel: params.originalModel,
+          reason: 'Router provider not found — using default model',
+        };
+      }
+      return evaluateRouting({
+        message: params.message,
+        routerProvider,
+        routerModel: params.routerModel,
+        config: params.config,
+        originalProviderId: params.originalProviderId,
+        originalModel: params.originalModel,
+      });
+    },
+  );
+
 
   // ─── Backend constants (not user-configurable) ────────────────────────────
   const GITHUB_REPO = 'OpenConduit/Client';
@@ -293,7 +334,7 @@ export function registerIpcHandlers(): void {
     const wc = e.sender;
     const { conversationId, providerId, model, parameters, systemPrompt, enabledMcpServerIds } =
       request;
-    const messageId = uuidv4();
+    const messageId = request.messageId ?? uuidv4();
     const abort = new AbortController();
     abortControllers.set(conversationId, abort);
 
@@ -312,7 +353,12 @@ export function registerIpcHandlers(): void {
     // Fire-and-forget async streaming
     (async () => {
       try {
-        let messages: Message[] = [...request.messages];
+        // Strip any empty assistant placeholders that may have been left in the
+        // conversation store from a prior failed turn (they serialise to null content
+        // which causes LM Studio / strict providers to reject the request).
+        let messages: Message[] = [...request.messages].filter(
+          (m) => m.role !== 'assistant' || !!(m.content || m.toolCalls?.length),
+        );
         const MAX_ITERATIONS = 10;
 
         // Auto-connect any enabled MCP servers that aren't connected yet

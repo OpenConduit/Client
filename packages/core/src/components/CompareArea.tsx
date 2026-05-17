@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useCompare } from '../hooks/useCompare';
@@ -7,62 +7,148 @@ import InputBar from './InputBar';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useUiStore } from '../stores/uiStore';
 
-// ─── Column header with provider + model selectors ───────────────────────────
+// ─── Column header with unified model picker ──────────────────────────────────
 
 interface ColumnHeaderProps {
   col: CompareColumn;
   canRemove: boolean;
-  onUpdate: (id: string, updates: Partial<Pick<CompareColumn, 'providerId' | 'model'>>) => void;
+  onUpdate: (id: string, updates: Partial<Pick<CompareColumn, 'providerId' | 'model' | 'routingProfileId'>>) => void;
   onRemove: (id: string) => void;
 }
 
 function ColumnHeader({ col, canRemove, onUpdate, onRemove }: ColumnHeaderProps) {
   const { settings, models, loadModels } = useSettingsStore();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
 
-  const modelList = models[col.providerId] ?? [];
-
+  // Load all provider models when the dropdown opens
   useEffect(() => {
-    if (col.providerId && !models[col.providerId]) {
-      loadModels(col.providerId);
+    if (open) {
+      settings?.providers.forEach((p) => { if (!models[p.id]) loadModels(p.id); });
+      setSearch('');
     }
-  }, [col.providerId, models, loadModels]);
+  }, [open, settings?.providers, models, loadModels]);
 
-  const handleProviderChange = (pid: string) => {
-    const p = settings?.providers.find((pr) => pr.id === pid);
-    onUpdate(col.id, { providerId: pid, model: p?.defaultModel ?? '' });
-    if (pid) loadModels(pid);
-  };
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const selectModel = useCallback((pid: string, m: string) => {
+    onUpdate(col.id, { providerId: pid, model: m, routingProfileId: undefined });
+    setOpen(false);
+  }, [col.id, onUpdate]);
+
+  const selectProfile = useCallback((profileId: string) => {
+    onUpdate(col.id, { routingProfileId: profileId, providerId: '', model: '' });
+    setOpen(false);
+  }, [col.id, onUpdate]);
+
+  const lowerSearch = search.toLowerCase();
+
+  const activeProfile = col.routingProfileId
+    ? settings?.routingProfiles?.find((p) => p.id === col.routingProfileId)
+    : undefined;
+  const providerName = settings?.providers.find((p) => p.id === col.providerId)?.name ?? '';
+  const label = activeProfile
+    ? activeProfile.name
+    : providerName && col.model
+      ? `${providerName} · ${col.model}`
+      : 'Select model…';
+
+  const profiles = (settings?.routingProfiles ?? []).filter(
+    (p) => !lowerSearch || p.name.toLowerCase().includes(lowerSearch),
+  );
 
   return (
     <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700 bg-slate-850 flex-shrink-0">
-      <select
-        value={col.providerId}
-        onChange={(e) => handleProviderChange(e.target.value)}
-        className="bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded px-2 py-1 outline-none focus:border-blue-500 cursor-pointer"
-      >
-        <option value="">Provider…</option>
-        {settings?.providers.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
+      <div ref={ref} className="relative flex-1 min-w-0">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="w-full flex items-center gap-1.5 bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 outline-none hover:border-blue-500 cursor-pointer transition-colors"
+        >
+          <span className="truncate flex-1 text-left">{label}</span>
+          <svg className="w-3 h-3 text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
 
-      <select
-        value={col.model}
-        onChange={(e) => onUpdate(col.id, { model: e.target.value })}
-        className="bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded px-2 py-1 outline-none focus:border-blue-500 cursor-pointer flex-1 min-w-0 truncate"
-      >
-        <option value="">Model…</option>
-        {col.model && !modelList.includes(col.model) && (
-          <option value={col.model}>{col.model}</option>
+        {open && (
+          <div className="absolute left-0 top-full mt-1 w-72 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden">
+            <div className="p-2 border-b border-slate-700">
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search models…"
+                className="w-full bg-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 outline-none placeholder-slate-500"
+              />
+            </div>
+            <div className="overflow-y-auto max-h-72">
+              {/* Routing Profiles */}
+              {profiles.length > 0 && (
+                <div>
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                    Routing Profiles
+                  </div>
+                  {profiles.map((profile) => (
+                    <button
+                      key={profile.id}
+                      onClick={() => selectProfile(profile.id)}
+                      className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-slate-700 transition-colors text-slate-300"
+                    >
+                      <span className="text-blue-400">⇢</span>
+                      <span className="truncate flex-1">{profile.name}</span>
+                      {col.routingProfileId === profile.id && (
+                        <span className="text-blue-400 flex-shrink-0">✓</span>
+                      )}
+                    </button>
+                  ))}
+                  <div className="border-t border-slate-700 my-1" />
+                </div>
+              )}
+
+              {/* Models grouped by provider */}
+              {settings?.providers.map((provider) => {
+                const all = [
+                  ...(provider.customModels ?? []),
+                  ...(models[provider.id] ?? []).filter((m) => !provider.customModels?.includes(m)),
+                ];
+                const filtered = all.filter(
+                  (m) => !lowerSearch || m.toLowerCase().includes(lowerSearch) || provider.name.toLowerCase().includes(lowerSearch),
+                );
+                if (filtered.length === 0) return null;
+                return (
+                  <div key={provider.id}>
+                    <div className="px-3 pt-2 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                      {provider.name}
+                    </div>
+                    {filtered.map((m) => {
+                      const isActive = col.providerId === provider.id && col.model === m;
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => selectModel(provider.id, m)}
+                          className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-slate-700 transition-colors ${isActive ? 'text-blue-400' : 'text-slate-300'}`}
+                        >
+                          <span className={`w-3 flex-shrink-0 ${isActive ? 'opacity-100' : 'opacity-0'}`}>✓</span>
+                          <span className="truncate">{m}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
-        {modelList.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
+      </div>
 
       {canRemove && (
         <button
@@ -84,7 +170,7 @@ function ColumnHeader({ col, canRemove, onUpdate, onRemove }: ColumnHeaderProps)
 interface ColumnViewProps {
   col: CompareColumn;
   canRemove: boolean;
-  onUpdate: (id: string, updates: Partial<Pick<CompareColumn, 'providerId' | 'model'>>) => void;
+  onUpdate: (id: string, updates: Partial<Pick<CompareColumn, 'providerId' | 'model' | 'routingProfileId'>>) => void;
   onRemove: (id: string) => void;
   onContinue: (col: CompareColumn) => void;
 }
