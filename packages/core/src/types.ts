@@ -1,6 +1,6 @@
 // ─── Provider Types ────────────────────────────────────────────────────────
 
-export type ProviderType = 'anthropic' | 'openai' | 'lmstudio' | 'gemini';
+export type ProviderType = 'anthropic' | 'openai' | 'lmstudio' | 'ollama' | 'gemini';
 
 export interface ProviderConfig {
   id: string;

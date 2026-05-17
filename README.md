@@ -18,7 +18,7 @@
 
 ## Features
 
-- **Multiple AI providers** — OpenAI, Anthropic (Claude), and LM Studio (local models via OpenAI-compatible API)
+- **Multiple AI providers** — OpenAI, Anthropic (Claude), LM Studio, and Ollama (local models via OpenAI-compatible API)
 - **MCP tool servers** — connect any [Model Context Protocol](https://modelcontextprotocol.io) server over HTTP-SSE, HTTP Streamable, or stdio
 - **Per-tool approval** — approve or deny individual tool calls before they execute, with per-server auto-approve override
 - **Conversation management** — persistent conversations with custom titles, per-conversation provider/model selection, and context window tracking
@@ -95,6 +95,7 @@ On first launch, open **Settings** (⌘, on macOS) and add at least one AI provi
 | OpenAI | API key, default model |
 | Anthropic | API key, default model |
 | LM Studio | Base URL (e.g. `http://localhost:1234`), default model |
+| Ollama | Auto-detected at `http://localhost:11434`, optional Base URL override, default model |
 
 ### MCP Servers
 

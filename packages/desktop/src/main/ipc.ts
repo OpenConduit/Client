@@ -28,6 +28,7 @@ import {
 import { streamAnthropic } from './providers/anthropic';
 import { streamOpenAI } from './providers/openai';
 import { streamLmStudio } from './providers/lmstudio';
+import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { evaluateRouting } from './routing';
 
@@ -84,6 +85,28 @@ export function registerIpcHandlers(): void {
         });
         const models = await client.models.list();
         return models.data.map((m: { id: string }) => m.id).sort();
+      } catch {
+        return [];
+      }
+    }
+
+    if (provider.type === 'ollama') {
+      try {
+        const base = normalizeOllamaBaseUrl(provider.baseUrl).replace(/\/v1\/?$/, '');
+        const response = await fetch(`${base}/api/tags`);
+        if (!response.ok) return [];
+        const body = await response.json() as {
+          models?: Array<{ name?: string; details?: { parameter_size?: string } }>;
+        };
+        return (body.models ?? [])
+          .map((m) => {
+            const name = m.name?.trim();
+            if (!name) return null;
+            const size = m.details?.parameter_size?.trim();
+            return size ? `${name} · ${size}` : name;
+          })
+          .filter((m): m is string => !!m)
+          .sort((a, b) => a.localeCompare(b));
       } catch {
         return [];
       }
@@ -390,6 +413,8 @@ export function registerIpcHandlers(): void {
                 return streamOpenAI(provider, messages, model, parameters, systemPrompt, tools);
               case 'lmstudio':
                 return streamLmStudio(provider, messages, model, parameters, systemPrompt, tools);
+              case 'ollama':
+                return streamOllama(provider, messages, model, parameters, systemPrompt, tools);
               case 'gemini':
                 return streamGemini(provider, messages, model, parameters, systemPrompt, tools);
             }

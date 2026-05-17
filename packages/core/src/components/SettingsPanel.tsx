@@ -355,7 +355,7 @@ function ProvidersTab({
         <EmptyState
           icon="🔑"
           title="No providers"
-          subtitle="Add an OpenAI, Anthropic, or LM Studio provider to get started"
+          subtitle="Add an OpenAI, Anthropic, LM Studio, or Ollama provider to get started"
         />
       )}
     </div>
@@ -414,11 +414,12 @@ function ProviderForm({
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic</option>
             <option value="lmstudio">LM Studio</option>
+            <option value="ollama">Ollama</option>
             <option value="gemini">Google Gemini</option>
           </select>
         </Field>
 
-        {draft.type !== 'lmstudio' && (
+        {draft.type !== 'lmstudio' && draft.type !== 'ollama' && (
           <Field label="API Key">
             <input
               type="password"
@@ -439,6 +440,8 @@ function ProviderForm({
             placeholder={
               draft.type === 'lmstudio'
                 ? 'http://localhost:1234/v1'
+                : draft.type === 'ollama'
+                  ? 'http://localhost:11434/v1'
                 : draft.type === 'anthropic'
                   ? 'https://…services.ai.azure.com/anthropic'
                   : draft.type === 'gemini'
@@ -484,6 +487,8 @@ function ProviderForm({
                 ? 'claude-sonnet-4-5'
                 : draft.type === 'lmstudio'
                   ? 'local-model'
+                  : draft.type === 'ollama'
+                    ? 'llama3.2'
                   : draft.type === 'gemini'
                     ? 'gemini-2.0-flash'
                     : 'gpt-4o'
@@ -1762,11 +1767,12 @@ function ProviderBadge({ type }: { type: ProviderType }) {
     openai: 'bg-emerald-800 text-emerald-200',
     anthropic: 'bg-orange-800 text-orange-200',
     lmstudio: 'bg-purple-800 text-purple-200',
+    ollama: 'bg-teal-800 text-teal-200',
     gemini: 'bg-blue-800 text-blue-200',
   };
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${colors[type]}`}>
-      {type === 'lmstudio' ? 'LMS' : type === 'anthropic' ? 'ANT' : type === 'gemini' ? 'GEM' : 'OAI'}
+      {type === 'lmstudio' ? 'LMS' : type === 'anthropic' ? 'ANT' : type === 'ollama' ? 'OLL' : type === 'gemini' ? 'GEM' : 'OAI'}
     </span>
   );
 }
