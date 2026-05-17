@@ -5,6 +5,7 @@ import { useUiStore } from '../stores/uiStore';
 import { useAnalyticsStore } from '../stores/analyticsStore';
 import type { ProviderConfig, McpServerConfig, AppSettings, ProviderType, McpTransport, McpTool, UpdateInfo, FeedbackPayload } from '../types';
 import { service } from '../services';
+import { McpMarketplace, ProviderMarketplace } from './MarketplacePanel';
 
 type Tab = 'general' | 'providers' | 'mcp' | 'features' | 'labs' | 'analytics' | 'about' | string;
 
@@ -252,6 +253,7 @@ function ProvidersTab({
 }) {
   const [editing, setEditing] = useState<ProviderConfig | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [view, setView] = useState<'list' | 'marketplace'>('list');
 
   const handleSaveProvider = (provider: ProviderConfig) => {
     const providers = isNew
@@ -276,21 +278,45 @@ function ProvidersTab({
     );
   }
 
+  if (view === 'marketplace') {
+    // Track which registry IDs the user has already added (by matching name)
+    const addedNames = new Set(settings.providers.map((p) => p.name));
+    return (
+      <ProviderMarketplace
+        installedTypes={addedNames}
+        onInstall={(partial) => {
+          setView('list');
+          setIsNew(true);
+          setEditing({ id: uuidv4(), ...partial });
+        }}
+        onBack={() => setView('list')}
+      />
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
         <p className="text-sm text-slate-400">
           {settings.providers.length} provider{settings.providers.length !== 1 ? 's' : ''} configured
         </p>
-        <button
-          onClick={() => {
-            setIsNew(true);
-            setEditing({ id: uuidv4(), name: '', type: 'openai' });
-          }}
-          className="btn-primary text-xs px-3 py-1.5"
-        >
-          + Add Provider
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setView('marketplace')}
+            className="btn-secondary text-xs px-3 py-1.5"
+          >
+            Browse Marketplace
+          </button>
+          <button
+            onClick={() => {
+              setIsNew(true);
+              setEditing({ id: uuidv4(), name: '', type: 'openai' });
+            }}
+            className="btn-primary text-xs px-3 py-1.5"
+          >
+            + Add Provider
+          </button>
+        </div>
       </div>
 
       {settings.providers.map((p) => (
@@ -507,6 +533,7 @@ function McpTab({
 }) {
   const [editing, setEditing] = useState<McpServerConfig | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [view, setView] = useState<'list' | 'marketplace'>('list');
   const [connecting, setConnecting] = useState<string | null>(null);
   const [toolsMap, setToolsMap] = useState<Record<string, McpTool[]>>({});
   const [loadingTools, setLoadingTools] = useState<string | null>(null);
@@ -580,6 +607,23 @@ function McpTab({
     );
   }
 
+  if (view === 'marketplace') {
+    const installedIds = new Set(
+      settings.mcpServers.map((s) => s.name)
+    );
+    return (
+      <McpMarketplace
+        installedIds={installedIds}
+        onInstall={(partial) => {
+          setView('list');
+          setIsNew(true);
+          setEditing({ id: uuidv4(), ...partial });
+        }}
+        onBack={() => setView('list')}
+      />
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
@@ -589,6 +633,12 @@ function McpTab({
         <div className="flex gap-2">
           <button onClick={onRefreshStatus} className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-700 transition-colors">
             Refresh
+          </button>
+          <button
+            onClick={() => setView('marketplace')}
+            className="btn-secondary text-xs px-3 py-1.5"
+          >
+            Browse Marketplace
           </button>
           <button
             onClick={() => {
