@@ -12,10 +12,8 @@
     "resolveJsonModule": true,
     "jsx": "react-jsx",
     "strict": false,
-    "paths": {
-      "@openconduit/core": ["packages/core/src/index.ts"],
-      "@openconduit/core/*": ["packages/core/src/*"]
-    }
+    "paths": {},
+    "types": ["vite/client"]
   },
-  "include": ["packages/**/*"]
+  "include": ["src/**/*", "packages/**/*"]
 }

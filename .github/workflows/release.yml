@@ -12,6 +12,8 @@ jobs:
   build-mac:
     name: Build macOS (Apple Silicon)
     runs-on: macos-15
+    permissions:
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +21,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@openconduit'
 
       - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build macOS arm64
         run: npm run make -- --platform darwin --arch arm64
@@ -42,6 +48,8 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
+    permissions:
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -49,8 +57,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@openconduit'
 
       - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Windows distributable
         run: npm run make -- --platform win32
@@ -67,6 +79,8 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -74,8 +88,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@openconduit'
 
       - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Linux packaging deps
         run: sudo apt-get install -y rpm

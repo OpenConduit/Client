@@ -10,6 +10,8 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -17,14 +19,20 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@openconduit'
 
       - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - run: npm run lint
 
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +40,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@openconduit'
 
       - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - run: npx tsc --noEmit
