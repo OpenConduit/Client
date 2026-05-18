@@ -35,7 +35,7 @@ export async function connectMcpServer(config: McpServerConfig): Promise<void> {
     transport = new StdioClientTransport({
       command: config.command,
       args: config.args ?? [],
-      env: config.env,
+      env: { ...process.env, ...config.env },
     });
   }
 
