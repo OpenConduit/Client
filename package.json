@@ -13,5 +13,6 @@
   },
   "devDependencies": {
     "husky": "^9.1.7"
-  }
+  },
+  "version": "1.2.0-alpha.1"
 }
