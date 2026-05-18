@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "./styles/brand_tokens.css";
-@source "../../core/src";
+@source "../../../node_modules/@openconduit/core/src";
 
 /* Tailwind v4: class-based dark mode — must be declared in CSS, not config */
 @variant dark (&:where(.dark, .dark *));
