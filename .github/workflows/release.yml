@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 1.2.2) — must match packages/desktop/package.json'
+        required: true
+        type: string
 
 permissions:
   contents: write  # needed to create GitHub Releases
@@ -124,7 +130,8 @@ jobs:
       - name: Detect pre-release
         id: prerelease
         run: |
-          if [[ "${{ github.ref_name }}" == *"-"* ]]; then
+          TAG="${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}"
+          if [[ "$TAG" == *"-"* ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           else
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
@@ -133,13 +140,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
           files: artifacts/**/*
+          generate_release_notes: true
           prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
-
-      - name: Notify website
-        if: steps.prerelease.outputs.is_prerelease == 'false'
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
-          repository: OpenConduit/Website
-          event-type: client-released
