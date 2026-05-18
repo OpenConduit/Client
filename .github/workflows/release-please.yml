@@ -17,3 +17,4 @@ jobs:
         id: rp
         with:
           release-type: node
+          draft: true
