@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.2.1](https://github.com/OpenConduit/Client/compare/v1.2.0...v1.2.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* update @openconduit/core to ^1.2.0 ([b15604b](https://github.com/OpenConduit/Client/commit/b15604b9b9982341d4d8e101f27732b5ea888d61))
+* update @openconduit/core to ^1.2.0 ([0723ea2](https://github.com/OpenConduit/Client/commit/0723ea2e64b8419132ba2acda45999e010aa1d0d))
+
 ## [1.2.0-alpha.1](https://github.com/OpenConduit/Client/compare/v1.1.0-alpha.1...v1.2.0-alpha.1) (2026-05-18)
 
 
