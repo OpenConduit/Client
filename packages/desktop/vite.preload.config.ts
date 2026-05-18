@@ -5,8 +5,7 @@ import path from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, 'src/shared'),
-      '@openconduit/core': path.resolve(__dirname, '../core/src'),
+      '@shared': path.resolve(__dirname, 'src/shared'), 
     },
   },
 });

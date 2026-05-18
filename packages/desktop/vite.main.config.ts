@@ -7,7 +7,6 @@ export default defineConfig({
     alias: {
       '@main': path.resolve(__dirname, 'src/main'),
       '@shared': path.resolve(__dirname, 'src/shared'),
-      '@openconduit/core': path.resolve(__dirname, '../core/src'),
     },
   },
   build: {
