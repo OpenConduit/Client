@@ -17,7 +17,7 @@ import {
   RoutingConfig,
   RoutingDecision,
 } from '../shared/types';
-import { getSettings, setSettings } from './store/settings';
+import { getSettings, setSettings, settingsStore } from './store/settings';
 import {
   connectMcpServer,
   disconnectMcpServer,
@@ -212,6 +212,10 @@ export function registerIpcHandlers(): void {
     // Basic sanity check — must have at least the providers array
     if (!Array.isArray(parsed.providers)) throw new Error('Invalid settings file');
     return setSettings(parsed);
+  });
+
+  ipcMain.handle(IPC.SETTINGS_OPEN_FILE, async (): Promise<void> => {
+    await shell.openPath(settingsStore.path);
   });
 
   // ─── Routing Evaluation ────────────────────────────────────────────────────

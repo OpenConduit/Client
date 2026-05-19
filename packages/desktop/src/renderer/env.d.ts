@@ -52,6 +52,7 @@ declare global {
       config: {
         exportSettings: (redact: boolean) => Promise<boolean>;
         importSettings: () => Promise<AppSettings | null>;
+        openSettingsFile: () => Promise<void>;
       };
     };
   }
