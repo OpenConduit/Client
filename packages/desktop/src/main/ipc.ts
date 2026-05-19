@@ -214,7 +214,7 @@ export function registerIpcHandlers(): void {
     return setSettings(parsed);
   });
 
-  ipcMain.handle(IPC.SETTINGS_OPEN_FILE, async (): Promise<void> => {
+  ipcMain.handle('settings:open-file', async (): Promise<void> => {
     await shell.openPath(settingsStore.path);
   });
 

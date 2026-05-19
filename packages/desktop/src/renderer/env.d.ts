@@ -54,6 +54,16 @@ declare global {
         importSettings: () => Promise<AppSettings | null>;
         openSettingsFile: () => Promise<void>;
       };
+      routing: {
+        evaluate: (params: {
+          message: string;
+          routerProviderId: string;
+          routerModel: string;
+          config: import('../shared/types').RoutingConfig;
+          originalProviderId: string;
+          originalModel: string;
+        }) => Promise<import('../shared/types').RoutingDecision>;
+      };
     };
   }
 }

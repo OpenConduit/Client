@@ -106,7 +106,7 @@ contextBridge.exposeInMainWorld('api', {
     importSettings: (): Promise<AppSettings | null> =>
       ipcRenderer.invoke(IPC.SETTINGS_IMPORT),
     openSettingsFile: (): Promise<void> =>
-      ipcRenderer.invoke(IPC.SETTINGS_OPEN_FILE),
+      ipcRenderer.invoke('settings:open-file'),
   },
   routing: {
     evaluate: (params: {
