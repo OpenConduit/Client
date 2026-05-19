@@ -7,6 +7,7 @@ import { AppSettings } from '../../shared/types';
 
 const defaults: AppSettings = {
   theme: 'system',
+  activeThemeId: null,
   providers: [],
   mcpServers: [],
   defaultParameters: {
