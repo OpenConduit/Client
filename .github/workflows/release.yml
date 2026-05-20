@@ -35,11 +35,14 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Import signing certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         env:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          if [ -z "$CERTIFICATE_BASE64" ]; then
+            echo "No certificate configured, skipping signing setup"
+            exit 0
+          fi
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -51,11 +54,12 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+          echo "APPLE_IDENTITY=Developer ID Application: Andrew Chumchal (2TT36YTB8P)" >> $GITHUB_ENV
 
       - name: Build macOS arm64
         run: npm run make -- --platform darwin --arch arm64
         env:
-          APPLE_IDENTITY: "${{ secrets.APPLE_CERTIFICATE != '' && 'Developer ID Application: Andrew Chumchal (2TT36YTB8P)' || '' }}"
+          APPLE_IDENTITY: ${{ env.APPLE_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
