@@ -55,7 +55,7 @@ jobs:
       - name: Build macOS arm64
         run: npm run make -- --platform darwin --arch arm64
         env:
-          APPLE_IDENTITY: ${{ secrets.APPLE_CERTIFICATE != '' && 'Developer ID Application: Andrew Chumchal (2TT36YTB8P)' || '' }}
+          APPLE_IDENTITY: "${{ secrets.APPLE_CERTIFICATE != '' && 'Developer ID Application: Andrew Chumchal (2TT36YTB8P)' || '' }}"
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
