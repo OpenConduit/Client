@@ -77,11 +77,14 @@ declare global {
     };
     /**
      * Global SDK surface exposed for dynamically-loaded extension bundles.
-     * Extensions call `window.__openConduit.extensionRegistry.registerExtension(...)`
-     * without needing to import `@openconduit/core`.
+     * Extensions can call any registry without importing `@openconduit/core`.
      */
     __openConduit?: {
-      extensionRegistry: import('@openconduit/core').extensionRegistry;
+      extensionRegistry:  typeof import('@openconduit/core').extensionRegistry;
+      hookRegistry:       typeof import('@openconduit/core').hookRegistry;
+      commandRegistry:    typeof import('@openconduit/core').commandRegistry;
+      bottomPanelRegistry: typeof import('@openconduit/core').bottomPanelRegistry;
+      settingsRegistry:   typeof import('@openconduit/core').settingsRegistry;
     };
   }
 }
