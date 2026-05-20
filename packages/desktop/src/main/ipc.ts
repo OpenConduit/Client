@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, WebContents, app, shell, dialog } from 'electron';
 import fs from 'fs/promises';
+import path from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
 import {
   IPC,
@@ -255,7 +256,36 @@ export function registerIpcHandlers(): void {
       });
     },
   );
-
+  // ─── Extensions ─────────────────────────────────────────────────────────
+  ipcMain.handle(IPC.EXTENSIONS_GET_INSTALLED, async (): Promise<import('../shared/types').InstalledExtensionInfo[]> => {
+    const extensionsDir = path.join(app.getPath('userData'), 'extensions');
+    try {
+      const entries = await fs.readdir(extensionsDir, { withFileTypes: true });
+      const results: import('../shared/types').InstalledExtensionInfo[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const manifestPath = path.join(extensionsDir, entry.name, 'manifest.json');
+        try {
+          const raw = await fs.readFile(manifestPath, 'utf-8');
+          const manifest = JSON.parse(raw) as Partial<import('../shared/types').InstalledExtensionInfo & { entryPoint: string }>;
+          if (manifest.id && manifest.entryPoint) {
+            results.push({
+              id: manifest.id,
+              name: manifest.name ?? manifest.id,
+              version: manifest.version ?? '0.0.0',
+              entryPoint: path.join(extensionsDir, entry.name, manifest.entryPoint),
+            });
+          }
+        } catch {
+          // Skip extensions with missing or invalid manifests
+        }
+      }
+      return results;
+    } catch {
+      // extensions/ directory doesn't exist yet — no extensions installed
+      return [];
+    }
+  });
 
   // ─── Backend constants (not user-configurable) ────────────────────────────
   const GITHUB_REPO = 'OpenConduit/Client';

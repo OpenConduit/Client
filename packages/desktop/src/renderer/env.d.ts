@@ -10,6 +10,7 @@ import type {
   ToolCall,
   UpdateInfo,
   FeedbackPayload,
+  InstalledExtensionInfo,
 } from '../shared/types';
 
 type UnsubFn = () => void;
@@ -64,6 +65,23 @@ declare global {
           originalModel: string;
         }) => Promise<import('../shared/types').RoutingDecision>;
       };
+      extensions: {
+        /** Returns metadata for all extensions installed in userData/extensions/. */
+        getInstalled: () => Promise<InstalledExtensionInfo[]>;
+        /**
+         * Reads an extension's bundled JS entry point from the filesystem.
+         * The preload handles filesystem access on behalf of the renderer.
+         */
+        readFile: (filePath: string) => Promise<string>;
+      };
+    };
+    /**
+     * Global SDK surface exposed for dynamically-loaded extension bundles.
+     * Extensions call `window.__openConduit.extensionRegistry.registerExtension(...)`
+     * without needing to import `@openconduit/core`.
+     */
+    __openConduit?: {
+      extensionRegistry: import('@openconduit/core').extensionRegistry;
     };
   }
 }

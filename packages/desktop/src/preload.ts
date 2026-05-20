@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import fs from 'node:fs';
 import type {
   AppSettings,
   ChatRequest,
@@ -12,6 +13,7 @@ import type {
   FeedbackPayload,
   RoutingConfig,
   RoutingDecision,
+  InstalledExtensionInfo,
 } from './shared/types';
 import { IPC } from './shared/types';
 
@@ -118,5 +120,21 @@ contextBridge.exposeInMainWorld('api', {
       originalModel: string;
     }): Promise<RoutingDecision> =>
       ipcRenderer.invoke(IPC.ROUTING_EVALUATE, params),
+  },
+
+  extensions: {
+    /** Returns metadata for all extensions installed in userData/extensions/. */
+    getInstalled: (): Promise<InstalledExtensionInfo[]> =>
+      ipcRenderer.invoke(IPC.EXTENSIONS_GET_INSTALLED),
+
+    /**
+     * Reads an extension's bundled JS entry point from the filesystem.
+     * The preload runs in Node context so it can access arbitrary file paths
+     * even though the renderer cannot (contextIsolation: true, nodeIntegration: false).
+     * The returned source is converted to a Blob URL by the renderer and
+     * imported as an ES module.
+     */
+    readFile: (filePath: string): Promise<string> =>
+      Promise.resolve(fs.readFileSync(filePath, 'utf-8')),
   },
 });
