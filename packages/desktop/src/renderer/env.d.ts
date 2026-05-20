@@ -74,6 +74,12 @@ declare global {
          */
         readFile: (filePath: string) => Promise<string>;
       };
+      log: {
+        /** Fire-and-forget: append an entry to the daily log file in userData/logs/. */
+        write: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void;
+        /** Open the userData/logs/ folder in Finder / Explorer. */
+        open: () => Promise<void>;
+      };
     };
     /**
      * Global SDK surface exposed for dynamically-loaded extension bundles.

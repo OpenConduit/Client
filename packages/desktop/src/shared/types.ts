@@ -25,6 +25,13 @@ export type InstalledExtensionInfo = _Base & {
         iconSvg?: string;
         order?: number;
       }>;
+      settings?: Array<{
+        key: string;
+        type: 'string' | 'boolean' | 'number';
+        default: string | boolean | number;
+        title?: string;
+        description?: string;
+      }>;
     };
   };
 };

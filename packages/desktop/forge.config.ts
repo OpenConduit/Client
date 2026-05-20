@@ -7,6 +7,8 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
+const isMac = process.platform === 'darwin';
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -14,6 +16,21 @@ const config: ForgeConfig = {
     name: 'OpenConduit',
     executableName: 'openconduit',
     icon: 'icons/icon', // .icns on macOS, .ico on Windows, .png on Linux
+    ...(isMac && process.env.APPLE_IDENTITY && {
+      osxSign: {
+        identity: process.env.APPLE_IDENTITY,
+        optionsForFile: () => ({
+          entitlements: 'entitlements.plist',
+          entitlementsInherit: 'entitlements.plist',
+          hardenedRuntime: true,
+        }),
+      },
+      osxNotarize: {
+        appleId: process.env.APPLE_ID!,
+        appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD!,
+        teamId: process.env.APPLE_TEAM_ID!,
+      },
+    }),
   },
   rebuildConfig: {},
   makers: [

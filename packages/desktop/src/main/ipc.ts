@@ -623,6 +623,50 @@ export function registerIpcHandlers(): void {
 
     return { messageId };
   });
+
+  // ─── Debug Logging ───────────────────────────────────────────────────────
+  // Keep last 7 days of daily log files; auto-prune on first write of each day.
+  const logsDir = path.join(app.getPath('userData'), 'logs');
+  let prunedToday = false;
+
+  ipcMain.on('log:write', async (_e, entry: {
+    ts: number; level: string; message: string; data?: unknown; category?: string;
+  }) => {
+    try {
+      await fs.mkdir(logsDir, { recursive: true });
+
+      const date   = new Date(entry.ts);
+      const dateStr = date.toISOString().slice(0, 10); // YYYY-MM-DD
+      const time   = date.toTimeString().slice(0, 8) + '.' + String(date.getMilliseconds()).padStart(3, '0');
+      const cat    = entry.category ? ` [${entry.category}]` : '';
+      const data   = entry.data !== undefined ? ' ' + JSON.stringify(entry.data) : '';
+      const line   = `[${time}] [${entry.level.toUpperCase().padEnd(5)}]${cat} ${entry.message}${data}\n`;
+
+      await fs.appendFile(path.join(logsDir, `debug-${dateStr}.log`), line, 'utf-8');
+
+      // Prune files older than 7 days (once per process lifetime)
+      if (!prunedToday) {
+        prunedToday = true;
+        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        try {
+          const files = await fs.readdir(logsDir);
+          await Promise.all(
+            files
+              .filter((f) => f.startsWith('debug-') && f.endsWith('.log'))
+              .map(async (f) => {
+                const stat = await fs.stat(path.join(logsDir, f));
+                if (stat.mtimeMs < cutoff) await fs.unlink(path.join(logsDir, f));
+              }),
+          );
+        } catch { /* prune failure is non-fatal */ }
+      }
+    } catch { /* log write failure must never crash the app */ }
+  });
+
+  ipcMain.handle('log:open', async (): Promise<void> => {
+    await fs.mkdir(logsDir, { recursive: true });
+    await shell.openPath(logsDir);
+  });
 }
 
 function requestApproval(

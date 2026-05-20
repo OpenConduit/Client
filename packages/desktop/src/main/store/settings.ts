@@ -5,7 +5,7 @@ import { app } from 'electron';
 import { AppSettings } from '../../shared/types';
 
 
-const defaults: AppSettings = {
+const defaults = {
   theme: 'system',
   activeThemeId: null,
   providers: [],
@@ -23,7 +23,13 @@ const defaults: AppSettings = {
     aiClarifyingQuestions: false,
     debugMode: false,
   },
-};
+  logging: {
+    provider: false,
+    mcp: false,
+    routing: false,
+    settings: false,
+  },
+} as AppSettings;
 
 function createSettingsStore() {
   return new Store<AppSettings>({

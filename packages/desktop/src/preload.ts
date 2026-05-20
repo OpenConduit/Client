@@ -137,4 +137,13 @@ contextBridge.exposeInMainWorld('api', {
     readFile: (filePath: string): Promise<string> =>
       Promise.resolve(fs.readFileSync(filePath, 'utf-8')),
   },
+
+  log: {
+    /** Fire-and-forget: append an entry to the daily log file in userData/logs/. */
+    write: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }): void =>
+      ipcRenderer.send('log:write', entry),
+    /** Open the userData/logs/ folder in Finder / Explorer. */
+    open: (): Promise<void> =>
+      ipcRenderer.invoke('log:open'),
+  },
 });
