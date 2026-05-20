@@ -507,7 +507,9 @@ export function registerIpcHandlers(): void {
               continue;
             }
 
+            const t0 = performance.now();
             const result = await callTool(serverId, tc.name, tc.input);
+            const durationMs = Math.round(performance.now() - t0);
             processedCalls.push({
               ...tc,
               serverId,
@@ -515,6 +517,7 @@ export function registerIpcHandlers(): void {
               result: result.result,
               isError: result.isError,
               pending: false,
+              durationMs,
             });
           }
 
