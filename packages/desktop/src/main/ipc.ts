@@ -36,6 +36,28 @@ import { evaluateRouting } from './routing';
 const abortControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
 
+async function writeLog(level: string, category: string, message: string, data?: unknown): Promise<void> {
+  try {
+    const logsDir = path.join(app.getPath('userData'), 'logs');
+    await fs.mkdir(logsDir, { recursive: true });
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+    const dataStr = data !== undefined ? ' ' + JSON.stringify(data) : '';
+    const line = `[${time}] [${level.toUpperCase().padEnd(5)}] [${category}] ${message}${dataStr}\n`;
+    await fs.appendFile(path.join(logsDir, `debug-${dateStr}.log`), line, 'utf-8');
+  } catch { /* non-fatal */ }
+}
+
+/** Write to the log file AND push to the in-app debug console panel in all renderer windows. */
+function broadcastConsole(level: string, category: string, message: string, data?: unknown): void {
+  void writeLog(level, category, message, data);
+  const entry = { ts: Date.now(), level, message, data, category };
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('log:console', entry);
+  }
+}
+
 export function registerIpcHandlers(): void {
   // Tool approval responses
   ipcMain.on(
@@ -329,7 +351,8 @@ export function registerIpcHandlers(): void {
     const userAgent = `openconduit/${currentVersion}`;
     const channel = (getSettings().updateChannel ?? 'stable') as 'stable' | 'beta' | 'alpha';
 
-    // Try Worker first (if configured), fall back to GitHub Releases API
+    // Try Worker first (if configured), fall back to GitHub Releases API,
+    // then fall back to update.electronjs.org (Electron's hosted proxy for GitHub Releases).
     if (WORKER_URL) {
       try {
         const res = await fetch(`${WORKER_URL}/latest?channel=${channel}`, {
@@ -383,9 +406,29 @@ export function registerIpcHandlers(): void {
         const latestVersion = match.tag_name.replace(/^v/, '');
         return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: match.body, downloadUrl: match.html_url };
       }
-    } catch (err) {
-      throw new Error(`Update check failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } catch { /* fall through to update.electronjs.org backup */ }
+
+    // Backup: update.electronjs.org — Electron's hosted GitHub Releases proxy.
+    // Returns 204 (no update) or JSON { url } / { name } when an update exists.
+    try {
+      const platform = process.platform === 'darwin' ? 'darwin' : process.platform === 'win32' ? 'win32' : 'linux';
+      const res = await fetch(
+        `https://update.electronjs.org/OpenConduit/Client/${platform}-${process.arch}/${currentVersion}`,
+        { headers: { 'User-Agent': userAgent }, signal: AbortSignal.timeout(8000) },
+      );
+      if (res.status === 204) {
+        return { hasUpdate: false, latestVersion: currentVersion, currentVersion };
+      }
+      if (res.ok) {
+        const data = await res.json() as { name?: string; url?: string; notes?: string };
+        const latestVersion = (data.name ?? currentVersion).replace(/^v/, '');
+        return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: data.notes, downloadUrl: data.url };
+      }
+    } catch { /* all sources exhausted */ }
+
+    // All sources exhausted — return gracefully so the UI shows a soft error
+    // rather than crashing the settings panel.
+    throw new Error(`Update check failed: all sources unreachable (Worker, GitHub API, update.electronjs.org)`);
   });
 
   // ─── Feedback Submit ──────────────────────────────────────────────────────
@@ -490,8 +533,15 @@ export function registerIpcHandlers(): void {
           let toolCalls: ToolCall[] = [];
           let turnUsage: import('../shared/types').TokenUsage | undefined;
 
+          broadcastConsole('info', 'provider', 'Stream request sent', { provider: provider.type, model, iteration, tools: tools.length, messages: messages.length });
+          let firstEvent = true;
+
           for await (const event of getStream()) {
             if (abort.signal.aborted) break;
+            if (firstEvent) {
+              broadcastConsole('info', 'provider', 'First event received', { type: event.type });
+              firstEvent = false;
+            }
             if (event.type === 'delta') {
               fullText += event.text;
               wc.send(IPC.CHAT_STREAM_CHUNK, {
@@ -514,6 +564,8 @@ export function registerIpcHandlers(): void {
           }
 
           if (abort.signal.aborted) break;
+
+          broadcastConsole('info', 'provider', 'Stream complete', { chars: fullText.length, toolCalls: toolCalls.length, hadUsage: !!turnUsage, firstEventReceived: !firstEvent });
 
           if (toolCalls.length === 0) {
             // No tool calls — conversation turn is complete
@@ -609,11 +661,13 @@ export function registerIpcHandlers(): void {
           messages = [...messages, assistantMsg, toolResultMsg];
         }
       } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        broadcastConsole('error', 'provider', 'Stream error', { error: errMsg, stack: err instanceof Error ? err.stack : undefined });
         if (!abort.signal.aborted) {
           wc.send(IPC.CHAT_STREAM_ERROR, {
             conversationId,
             messageId,
-            error: err instanceof Error ? err.message : String(err),
+            error: errMsg,
           } as StreamError);
         }
       } finally {

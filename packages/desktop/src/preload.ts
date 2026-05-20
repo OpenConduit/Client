@@ -145,5 +145,11 @@ contextBridge.exposeInMainWorld('api', {
     /** Open the userData/logs/ folder in Finder / Explorer. */
     open: (): Promise<void> =>
       ipcRenderer.invoke('log:open'),
+    /** Subscribe to log entries pushed from the main process. Returns an unsub fn. */
+    onConsoleEntry: (cb: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void): (() => void) => {
+      const handler = (_: Electron.IpcRendererEvent, entry: unknown) => cb(entry as Parameters<typeof cb>[0]);
+      ipcRenderer.on('log:console', handler);
+      return () => ipcRenderer.removeListener('log:console', handler);
+    },
   },
 });

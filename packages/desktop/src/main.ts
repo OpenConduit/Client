@@ -1,6 +1,8 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, session } from 'electron';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
+import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import { registerIpcHandlers } from './main/ipc';
 
 if (started) app.quit();
@@ -42,7 +44,8 @@ const createWindow = () => {
       sandbox: false, // needed so preload can use Node APIs (MCP stdio)
       nodeIntegration: false,
     },
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    autoHideMenuBar: true,
     show: false,
   });
 
@@ -58,7 +61,54 @@ const createWindow = () => {
 
 };
 
-app.on('ready', createWindow);
+app.on('ready', () => {
+  // In production the renderer loads via file://, so absolute paths like
+  // /app-icon.png resolve to the filesystem root instead of the bundled asset
+  // directory. Intercept those requests and redirect to the correct path.
+  if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    const assetDir = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`);
+    session.defaultSession.webRequest.onBeforeRequest(
+      { urls: ['file://*'] },
+      (details, callback) => {
+        if (details.url.endsWith('/app-icon.png')) {
+          callback({ redirectURL: pathToFileURL(path.join(assetDir, 'app-icon.png')).href });
+        } else {
+          callback({});
+        }
+      }
+    );
+  }
+  createWindow();
+
+  // Auto-update: resolve the best update URL after window creation so startup
+  // isn't delayed. Tries the custom domain first; falls back to the direct
+  // Worker URL if unreachable.
+  if (app.isPackaged) {
+    const version = app.getVersion();
+    const channel = version.includes('alpha') ? 'alpha' : version.includes('beta') ? 'beta' : 'stable';
+    const urlPath = `updates/${channel}/${process.platform}/${process.arch}`;
+    const primary = `https://updates.openconduit.ai/${urlPath}`;
+    const backup  = `https://openconduit-release-api.chumchal-account.workers.dev/${urlPath}`;
+    const probe   = process.platform === 'darwin' ? 'RELEASES.json' : 'RELEASES';
+
+    void (async () => {
+      let baseUrl = backup;
+      try {
+        const res = await fetch(`${primary}/${probe}`, {
+          method: 'HEAD',
+          signal: AbortSignal.timeout(4000),
+        });
+        if (res.ok || res.status === 204) baseUrl = primary;
+      } catch { /* primary unreachable — use backup */ }
+
+      updateElectronApp({
+        updateSource: { type: UpdateSourceType.StaticStorage, baseUrl },
+        updateInterval: '1 hour',
+        notifyUser: true,
+      });
+    })();
+  }
+});
 registerIpcHandlers();
 
 app.on('window-all-closed', () => {

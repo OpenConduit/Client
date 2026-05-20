@@ -1,5 +1,6 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
+import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
@@ -39,6 +40,9 @@ const config: ForgeConfig = {
       setupIcon: 'icons/favicon.ico',
       iconUrl: 'https://raw.githubusercontent.com/OpenConduit/Client/main/icons/favicon.ico',
     }),
+    // ZIP for macOS — required by update.electronjs.org auto-update service.
+    // Produces: OpenConduit-{version}-darwin-{arch}.zip
+    new MakerZIP({}, ['darwin']),
     new MakerDMG({
       name: 'OpenConduit',
       icon: 'icons/icon.icns',

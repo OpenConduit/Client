@@ -75,14 +75,19 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: openconduit-mac-arm64-${{ github.ref_name }}
-          path: packages/desktop/out/make/**/*.dmg
+          path: |
+            packages/desktop/out/make/**/*.dmg
+            packages/desktop/out/make/**/*.zip
           retention-days: 30
 
   build-windows:
-    name: Build Windows
+    name: Build Windows (${{ matrix.arch }})
     runs-on: windows-latest
     permissions:
       packages: read
+    strategy:
+      matrix:
+        arch: [x64, arm64]
     steps:
       - uses: actions/checkout@v4
 
@@ -97,16 +102,19 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Windows distributable
-        run: npm run make -- --platform win32
+      - name: Build Windows ${{ matrix.arch }}
+        run: npm run make -- --platform win32 --arch ${{ matrix.arch }}
         env:
           NODE_ENV: production
 
-      - name: Upload Windows artifacts
+      - name: Upload Windows ${{ matrix.arch }} artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: openconduit-win-${{ github.ref_name }}
-          path: packages/desktop/out/make/**/*.exe
+          name: openconduit-win-${{ matrix.arch }}-${{ github.ref_name }}
+          path: |
+            packages/desktop/out/make/**/*.exe
+            packages/desktop/out/make/**/*.nupkg
+            packages/desktop/out/make/**/RELEASES
           retention-days: 30
 
   build-linux:

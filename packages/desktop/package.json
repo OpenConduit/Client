@@ -1,7 +1,7 @@
 {
   "name": "openconduit",
   "productName": "OpenConduit",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "description": "Cross-platform desktop AI chat client — OpenAI, Anthropic, LM Studio, and MCP tool servers",
   "main": ".vite/build/main.js",
   "private": true,
@@ -67,6 +67,7 @@
     "pdf-parse": "^2.4.5",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "update-electron-app": "^3.2.0",
     "uuid": "^14.0.0",
     "zustand": "^5.0.13"
   }

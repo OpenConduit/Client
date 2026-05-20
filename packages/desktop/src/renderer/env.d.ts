@@ -79,6 +79,8 @@ declare global {
         write: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void;
         /** Open the userData/logs/ folder in Finder / Explorer. */
         open: () => Promise<void>;
+        /** Subscribe to log entries pushed from the main process. Returns an unsub fn. */
+        onConsoleEntry: (cb: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void) => (() => void);
       };
     };
     /**
