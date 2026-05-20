@@ -256,35 +256,66 @@ export function registerIpcHandlers(): void {
       });
     },
   );
-  // ─── Extensions ─────────────────────────────────────────────────────────
+  // ─── Extensions ─────────────────────────────────────────────────────────-- //
+  /*
+   * Scan a directory for installed extensions and append results to `out`.
+   * Each sub-directory must contain a `manifest.json` with at minimum `id`
+   * and `entryPoint` fields. The full parsed manifest is forwarded to the
+   * renderer so the Phase 5 sandboxed loader can pre-register contributions
+   * without running the extension bundle first.
+  */
+  async function scanExtensionDir(
+    dir: string,
+    out: import('../shared/types').InstalledExtensionInfo[]
+  ): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const manifestPath = path.join(dir, entry.name, 'manifest.json');
+      try {
+        const raw = await fs.readFile(manifestPath, 'utf-8');
+        const parsed = JSON.parse(raw) as Record<string, unknown> & { id?: string; entryPoint?: string };
+        if (!parsed.id || !parsed.entryPoint) continue;
+        const { entryPoint: relEntry, ...manifestRest } = parsed;
+        out.push({
+          id: parsed.id,
+          name: typeof parsed.name === 'string' ? parsed.name : parsed.id,
+          version: typeof parsed.version === 'string' ? parsed.version : '0.0.0',
+          entryPoint: path.join(dir, entry.name, relEntry as string),
+          // Full manifest forwarded so renderer can use Phase 5 sandboxed path.
+          manifest: manifestRest as import('../shared/types').InstalledExtensionInfo['manifest'],
+        });
+      } catch {
+        // Skip extensions with missing or invalid manifests
+      }
+    }
+  }
+
   ipcMain.handle(IPC.EXTENSIONS_GET_INSTALLED, async (): Promise<import('../shared/types').InstalledExtensionInfo[]> => {
+    const results: import('../shared/types').InstalledExtensionInfo[] = [];
+
+    // ── Production: userData/extensions/ ─────────────────────────────────────
     const extensionsDir = path.join(app.getPath('userData'), 'extensions');
     try {
-      const entries = await fs.readdir(extensionsDir, { withFileTypes: true });
-      const results: import('../shared/types').InstalledExtensionInfo[] = [];
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const manifestPath = path.join(extensionsDir, entry.name, 'manifest.json');
-        try {
-          const raw = await fs.readFile(manifestPath, 'utf-8');
-          const manifest = JSON.parse(raw) as Partial<import('../shared/types').InstalledExtensionInfo & { entryPoint: string }>;
-          if (manifest.id && manifest.entryPoint) {
-            results.push({
-              id: manifest.id,
-              name: manifest.name ?? manifest.id,
-              version: manifest.version ?? '0.0.0',
-              entryPoint: path.join(extensionsDir, entry.name, manifest.entryPoint),
-            });
-          }
-        } catch {
-          // Skip extensions with missing or invalid manifests
-        }
-      }
-      return results;
+      await scanExtensionDir(extensionsDir, results);
     } catch {
       // extensions/ directory doesn't exist yet — no extensions installed
-      return [];
     }
+
+    // ── Development: OPENCONDUIT_DEV_EXTENSIONS env var ───────────────────────
+    // Set this to an absolute path containing extension sub-directories to load
+    // extra extensions without copying them to userData. Example:
+    //   OPENCONDUIT_DEV_EXTENSIONS=/path/to/core/test-extensions npm start
+    const devDir = process.env.OPENCONDUIT_DEV_EXTENSIONS;
+    if (devDir) {
+      try {
+        await scanExtensionDir(devDir, results);
+      } catch (err) {
+        console.warn('[Extensions] OPENCONDUIT_DEV_EXTENSIONS scan failed:', err);
+      }
+    }
+
+    return results;
   });
 
   // ─── Backend constants (not user-configurable) ────────────────────────────
@@ -591,6 +622,50 @@ export function registerIpcHandlers(): void {
     })();
 
     return { messageId };
+  });
+
+  // ─── Debug Logging ───────────────────────────────────────────────────────
+  // Keep last 7 days of daily log files; auto-prune on first write of each day.
+  const logsDir = path.join(app.getPath('userData'), 'logs');
+  let prunedToday = false;
+
+  ipcMain.on('log:write', async (_e, entry: {
+    ts: number; level: string; message: string; data?: unknown; category?: string;
+  }) => {
+    try {
+      await fs.mkdir(logsDir, { recursive: true });
+
+      const date   = new Date(entry.ts);
+      const dateStr = date.toISOString().slice(0, 10); // YYYY-MM-DD
+      const time   = date.toTimeString().slice(0, 8) + '.' + String(date.getMilliseconds()).padStart(3, '0');
+      const cat    = entry.category ? ` [${entry.category}]` : '';
+      const data   = entry.data !== undefined ? ' ' + JSON.stringify(entry.data) : '';
+      const line   = `[${time}] [${entry.level.toUpperCase().padEnd(5)}]${cat} ${entry.message}${data}\n`;
+
+      await fs.appendFile(path.join(logsDir, `debug-${dateStr}.log`), line, 'utf-8');
+
+      // Prune files older than 7 days (once per process lifetime)
+      if (!prunedToday) {
+        prunedToday = true;
+        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        try {
+          const files = await fs.readdir(logsDir);
+          await Promise.all(
+            files
+              .filter((f) => f.startsWith('debug-') && f.endsWith('.log'))
+              .map(async (f) => {
+                const stat = await fs.stat(path.join(logsDir, f));
+                if (stat.mtimeMs < cutoff) await fs.unlink(path.join(logsDir, f));
+              }),
+          );
+        } catch { /* prune failure is non-fatal */ }
+      }
+    } catch { /* log write failure must never crash the app */ }
+  });
+
+  ipcMain.handle('log:open', async (): Promise<void> => {
+    await fs.mkdir(logsDir, { recursive: true });
+    await shell.openPath(logsDir);
   });
 }
 
