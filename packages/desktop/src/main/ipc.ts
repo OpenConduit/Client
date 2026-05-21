@@ -1,6 +1,7 @@
-import { BrowserWindow, ipcMain, WebContents, app, shell, dialog } from 'electron';
+import { BrowserWindow, ipcMain, WebContents, app, shell, dialog, autoUpdater } from 'electron';
 import fs from 'fs/promises';
 import path from 'node:path';
+import semver from 'semver';
 import { v4 as uuidv4 } from 'uuid';
 import {
   IPC,
@@ -361,7 +362,7 @@ export function registerIpcHandlers(): void {
         });
         if (res.ok) {
           const data = await res.json() as { version: string; notes?: string; url?: string };
-          const hasUpdate = data.version !== currentVersion;
+          const hasUpdate = semver.valid(data.version) !== null && semver.gt(data.version, currentVersion);
           return { hasUpdate, latestVersion: data.version, currentVersion, releaseNotes: data.notes, downloadUrl: data.url };
         }
       } catch { /* fall through to GitHub */ }
@@ -377,7 +378,7 @@ export function registerIpcHandlers(): void {
         if (!res.ok) throw new Error(`GitHub API returned HTTP ${res.status}`);
         const data = await res.json() as { tag_name: string; body?: string; html_url: string };
         const latestVersion = data.tag_name.replace(/^v/, '');
-        return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: data.body, downloadUrl: data.html_url };
+        return { hasUpdate: !!semver.valid(latestVersion) && semver.gt(latestVersion, currentVersion), latestVersion, currentVersion, releaseNotes: data.body, downloadUrl: data.html_url };
       } else {
         // Beta/Alpha: scan all releases for the newest matching pre-release tag
         const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20`, {
@@ -399,12 +400,12 @@ export function registerIpcHandlers(): void {
           const fallback = releases.find((r) => !r.prerelease);
           if (fallback) {
             const latestVersion = fallback.tag_name.replace(/^v/, '');
-            return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: fallback.body, downloadUrl: fallback.html_url };
+            return { hasUpdate: !!semver.valid(latestVersion) && semver.gt(latestVersion, currentVersion), latestVersion, currentVersion, releaseNotes: fallback.body, downloadUrl: fallback.html_url };
           }
           throw new Error('No releases found');
         }
         const latestVersion = match.tag_name.replace(/^v/, '');
-        return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: match.body, downloadUrl: match.html_url };
+        return { hasUpdate: !!semver.valid(latestVersion) && semver.gt(latestVersion, currentVersion), latestVersion, currentVersion, releaseNotes: match.body, downloadUrl: match.html_url };
       }
     } catch { /* fall through to update.electronjs.org backup */ }
 
@@ -422,7 +423,7 @@ export function registerIpcHandlers(): void {
       if (res.ok) {
         const data = await res.json() as { name?: string; url?: string; notes?: string };
         const latestVersion = (data.name ?? currentVersion).replace(/^v/, '');
-        return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: data.notes, downloadUrl: data.url };
+        return { hasUpdate: !!semver.valid(latestVersion) && semver.gt(latestVersion, currentVersion), latestVersion, currentVersion, releaseNotes: data.notes, downloadUrl: data.url };
       }
     } catch { /* all sources exhausted */ }
 
@@ -453,6 +454,11 @@ export function registerIpcHandlers(): void {
     const body = `${payload.description}\n\n---\n_App version: ${app.getVersion()} · Platform: ${process.platform}_`;
     const url = `https://github.com/${GITHUB_REPO}/issues/new?title=${encodeURIComponent(payload.title)}&body=${encodeURIComponent(body)}&labels=${label}`;
     await shell.openExternal(url);
+  });
+
+  // ─── Update: Restart & Install ───────────────────────────────────────────
+  ipcMain.handle('update:restart', (): void => {
+    autoUpdater.quitAndInstall();
   });
 
   // ─── Abort ───────────────────────────────────────────────────────────────
