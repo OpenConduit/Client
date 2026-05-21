@@ -10,6 +10,10 @@
 import { BrowserWindow, session } from 'electron';
 
 let _win: BrowserWindow | null = null;
+// Serialise all calls through the hidden window so concurrent tool calls
+// never share event-listener state or interrupt each other's loadURL /
+// executeJavaScript sequences.
+let _queue: Promise<unknown> = Promise.resolve();
 
 function getWindow(): BrowserWindow {
   if (_win && !_win.isDestroyed()) return _win;
@@ -28,7 +32,13 @@ function getWindow(): BrowserWindow {
     },
   });
 
-  _win.on('closed', () => {
+  _win.on('closed', () => { _win = null; });
+
+  // When the hidden window's renderer crashes, null the reference so the
+  // next call gets a fresh window instead of hitting a dead webContents.
+  _win.webContents.on('render-process-gone', (_e, details) => {
+    console.error(`[webtools] hidden browser renderer gone: ${details.reason} (exit ${details.exitCode})`);
+    if (_win && !_win.isDestroyed()) _win.destroy();
     _win = null;
   });
 
@@ -83,17 +93,16 @@ async function loadAndWait(win: BrowserWindow, url: string, timeoutMs = 15_000):
  * Fetch a URL using the hidden browser window and return the page's readable
  * text content. Falls back to a blank string on extraction failure.
  */
-export async function fetchUrlWithBrowser(
+export function fetchUrlWithBrowser(
   url: string,
   show = false,
 ): Promise<string> {
-  const win = getWindow();
-  if (show) win.show();
-
-  try {
-    await loadAndWait(win, url);
-
-    const text: string = await win.webContents.executeJavaScript(`
+  const task = async (): Promise<string> => {
+    const win = getWindow();
+    if (show) win.show();
+    try {
+      await loadAndWait(win, url);
+      const text: string = await win.webContents.executeJavaScript(`
       (() => {
         // Remove noise elements
         ['script','style','noscript','nav','header','footer','aside',
@@ -111,10 +120,12 @@ export async function fetchUrlWithBrowser(
       })()
     `);
 
-    return text;
-  } finally {
-    if (show) win.hide();
-  }
+      return text;
+    } finally {
+      if (show) win.hide();
+    }
+  };
+  return (_queue = _queue.then(task, task) as Promise<string>);
 }
 
 export type SearchResult = {
@@ -126,15 +137,15 @@ export type SearchResult = {
 /**
  * Perform a DuckDuckGo Lite search via the browser window.
  */
-export async function searchWithBrowser(
+export function searchWithBrowser(
   query: string,
   show = false,
   maxResults = 5,
 ): Promise<SearchResult[]> {
-  const win = getWindow();
-  if (show) win.show();
-
-  const searchUrl = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
+  const task = async (): Promise<SearchResult[]> => {
+    const win = getWindow();
+    if (show) win.show();
+    const searchUrl = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
 
   try {
     await loadAndWait(win, searchUrl);
@@ -160,25 +171,27 @@ export async function searchWithBrowser(
       })()
     `);
 
-    return results.slice(0, maxResults);
-  } finally {
-    if (show) win.hide();
-  }
+      return results.slice(0, maxResults);
+    } finally {
+      if (show) win.hide();
+    }
+  };
+  return (_queue = _queue.then(task, task) as Promise<SearchResult[]>);
 }
 
 /**
  * Perform a Google search via the browser and extract organic results.
  * Waits for JS-rendered results to appear in the DOM before scraping.
  */
-export async function searchWithGoogle(
+export function searchWithGoogle(
   query: string,
   show = false,
   maxResults = 5,
 ): Promise<SearchResult[]> {
-  const win = getWindow();
-  if (show) win.show();
-
-  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${maxResults}`;
+  const task = async (): Promise<SearchResult[]> => {
+    const win = getWindow();
+    if (show) win.show();
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${maxResults}`;
 
   try {
     await loadAndWait(win, searchUrl);
@@ -217,23 +230,25 @@ export async function searchWithGoogle(
     `);
 
     return results.slice(0, maxResults);
-  } finally {
-    if (show) win.hide();
-  }
+    } finally {
+      if (show) win.hide();
+    }
+  };
+  return (_queue = _queue.then(task, task) as Promise<SearchResult[]>);
 }
 
 /**
  * Perform a Bing search via the browser and extract organic results.
  */
-export async function searchWithBing(
+export function searchWithBing(
   query: string,
   show = false,
   maxResults = 5,
 ): Promise<SearchResult[]> {
-  const win = getWindow();
-  if (show) win.show();
-
-  const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${maxResults}`;
+  const task = async (): Promise<SearchResult[]> => {
+    const win = getWindow();
+    if (show) win.show();
+    const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${maxResults}`;
 
   try {
     await loadAndWait(win, searchUrl);
@@ -255,6 +270,8 @@ export async function searchWithBing(
   } finally {
     if (show) win.hide();
   }
+};
+  return (_queue = _queue.then(task, task) as Promise<SearchResult[]>);
 }
 
 /** Destroy the singleton window (call on app quit). */
