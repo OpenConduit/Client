@@ -109,6 +109,8 @@ export interface StoredCrash {
   errorMessage: string;
   stackTrace: string;
   timestamp: string;
+  /** Path to the Crashpad minidumps directory for this crash. */
+  crashDumpsDir?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

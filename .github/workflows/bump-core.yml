@@ -1,0 +1,76 @@
+name: Bump @openconduit/core
+
+# Triggered automatically when core publishes a new version, or manually
+# via workflow_dispatch for out-of-band bumps.
+on:
+  repository_dispatch:
+    types: [core-published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New @openconduit/core version (e.g. 2.0.0-alpha.8)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: read
+
+jobs:
+  bump:
+    name: Update @openconduit/core and open PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@openconduit'
+
+      - name: Install current dependencies
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve target version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install new @openconduit/core
+        run: npm install @openconduit/core@${{ steps.ver.outputs.version }} -w packages/desktop
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Open Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/bump-core-${{ steps.ver.outputs.version }}
+          base: dev
+          commit-message: "chore: bump @openconduit/core to ${{ steps.ver.outputs.version }}"
+          title: "chore: bump @openconduit/core to ${{ steps.ver.outputs.version }}"
+          body: |
+            Automated dependency bump triggered by a new `@openconduit/core` release.
+
+            | | |
+            |---|---|
+            | **New version** | `${{ steps.ver.outputs.version }}` |
+            | **File changed** | `packages/desktop/package.json` |
+
+            ### After merging
+            Check `packages/desktop/src/shared/types.ts` for local type stubs whose
+            comment says they were declared to work around a missing package version.
+            If those types are now included in `@openconduit/core@${{ steps.ver.outputs.version }}`,
+            remove the local stubs to avoid duplicate declarations.
