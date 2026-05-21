@@ -101,6 +101,15 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke(IPC.FEEDBACK_SUBMIT, payload),
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
+    /** Subscribe to be notified when an update has been downloaded. Returns an unsub fn. */
+    onUpdateDownloaded: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('update:downloaded', handler);
+      return () => ipcRenderer.removeListener('update:downloaded', handler);
+    },
+    /** Quit and install the downloaded update immediately. */
+    restartAndInstall: (): Promise<void> =>
+      ipcRenderer.invoke('update:restart'),
   },
   config: {
     exportSettings: (redact: boolean): Promise<boolean> =>
@@ -152,4 +161,5 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('log:console', handler);
     },
   },
+
 });

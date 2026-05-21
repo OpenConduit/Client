@@ -1,9 +1,10 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, session, autoUpdater } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import { registerIpcHandlers } from './main/ipc';
+import { getSettings } from './main/store/settings';
 
 if (started) app.quit();
 
@@ -101,11 +102,30 @@ app.on('ready', () => {
         if (res.ok || res.status === 204) baseUrl = primary;
       } catch { /* primary unreachable — use backup */ }
 
+      const updateMode = getSettings().updateMode ?? 'automatic';
+
+      // manual mode: skip the auto-updater entirely; user checks via Settings
+      if (updateMode === 'manual') return;
+
+      // download-only: download silently, then broadcast to renderer when ready
+      // automatic:     download silently and show OS restart dialog when ready
+      const notifyUser = updateMode === 'automatic';
+
       updateElectronApp({
         updateSource: { type: UpdateSourceType.StaticStorage, baseUrl },
         updateInterval: '1 hour',
-        notifyUser: true,
+        notifyUser,
       });
+
+      // For download-only mode, broadcast the 'update:downloaded' event so the
+      // Updates tab can show the "Restart & Install" banner.
+      if (updateMode === 'download-only') {
+        autoUpdater.once('update-downloaded', () => {
+          for (const win of BrowserWindow.getAllWindows()) {
+            win.webContents.send('update:downloaded');
+          }
+        });
+      }
     })();
   }
 });
