@@ -171,4 +171,21 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('webtool:test', type),
   },
 
+  extensionTools: {
+    /**
+     * Listen for the main process asking the renderer to execute an extension
+     * tool. Returns an unsubscribe function.
+     */
+    onCall: (cb: (data: { callId: string; toolName: string; input: Record<string, unknown> }) => void): UnsubFn => {
+      const handler = (_: Electron.IpcRendererEvent, data: unknown) =>
+        cb(data as Parameters<typeof cb>[0]);
+      ipcRenderer.on('chat:extension-tool-call', handler);
+      return () => ipcRenderer.removeListener('chat:extension-tool-call', handler);
+    },
+
+    /** Send the result of an extension tool call back to the main process. */
+    sendResult: (data: { callId: string; result: string; isError: boolean }): void =>
+      ipcRenderer.send('chat:extension-tool-result', data),
+  },
+
 });

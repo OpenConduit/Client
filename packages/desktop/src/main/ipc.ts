@@ -35,8 +35,11 @@ import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { evaluateRouting } from './routing';
 
+const EXTENSION_SERVER_ID = '__extension__';
+
 const abortControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
+const pendingExtensionToolCalls = new Map<string, (result: { result: string; isError: boolean }) => void>();
 
 async function writeLog(level: string, category: string, message: string, data?: unknown): Promise<void> {
   try {
@@ -69,6 +72,18 @@ export function registerIpcHandlers(): void {
       if (resolve) {
         pendingApprovals.delete(toolId);
         resolve(approved);
+      }
+    },
+  );
+
+  // Extension tool execution results (renderer → main)
+  ipcMain.on(
+    'chat:extension-tool-result',
+    (_e, { callId, result, isError }: { callId: string; result: string; isError: boolean }) => {
+      const resolve = pendingExtensionToolCalls.get(callId);
+      if (resolve) {
+        pendingExtensionToolCalls.delete(callId);
+        resolve({ result, isError });
       }
     },
   );
@@ -687,6 +702,24 @@ export function registerIpcHandlers(): void {
               continue;
             }
 
+            // Route extension-contributed tools back to the renderer for execution
+            if (serverId === EXTENSION_SERVER_ID) {
+              const callId = uuidv4();
+              const t0 = performance.now();
+              const result = await callExtensionTool(wc, callId, tc);
+              const durationMs = Math.round(performance.now() - t0);
+              processedCalls.push({
+                ...tc,
+                serverId: EXTENSION_SERVER_ID,
+                approved: true,
+                result: result.result,
+                isError: result.isError,
+                pending: false,
+                durationMs,
+              });
+              continue;
+            }
+
             if (!serverId) {
               processedCalls.push({
                 ...tc,
@@ -813,5 +846,24 @@ function requestApproval(
       messageId,
       toolCall,
     } as ToolApprovalRequest);
+  });
+}
+
+/**
+ * Ask the renderer to execute an extension-contributed tool handler.
+ * Sends `chat:extension-tool-call` and waits for `chat:extension-tool-result`.
+ */
+function callExtensionTool(
+  wc: WebContents,
+  callId: string,
+  toolCall: ToolCall,
+): Promise<{ result: string; isError: boolean }> {
+  return new Promise((resolve) => {
+    pendingExtensionToolCalls.set(callId, resolve);
+    wc.send('chat:extension-tool-call', {
+      callId,
+      toolName: toolCall.name,
+      input: toolCall.input,
+    });
   });
 }

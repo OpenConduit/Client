@@ -90,7 +90,12 @@ declare global {
         /** Run a quick smoke-test of web_fetch or web_search with current settings. */
         test: (type: 'fetch' | 'search') => Promise<{ ok: boolean; message: string }>;
       };
-
+      extensionTools: {
+        /** Listen for the main process requesting an extension tool call. Returns an unsub fn. */
+        onCall: (cb: (data: { callId: string; toolName: string; input: Record<string, unknown> }) => void) => UnsubFn;
+        /** Send the result of an extension tool call back to the main process. */
+        sendResult: (data: { callId: string; result: string; isError: boolean }) => void;
+      };
     };
     /**
      * Global SDK surface exposed for dynamically-loaded extension bundles.
