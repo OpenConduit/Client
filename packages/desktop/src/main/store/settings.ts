@@ -92,3 +92,32 @@ export function setSettings(partial: Partial<AppSettings>): AppSettings {
   }
   return settingsStore.store as AppSettings;
 }
+
+// ─── Crash storage ──────────────────────────────────────────────────────────
+// Persists the last crash to disk regardless of telemetry opt-in, so users
+// can manually review and send it later from Settings → Telemetry.
+
+export interface StoredCrash {
+  appVersion: string;
+  platform: string;
+  electronVersion: string;
+  errorType: string;
+  errorMessage: string;
+  stackTrace: string;
+  timestamp: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const diagnosticsStore = new (Store as any)({ name: 'openconduit-diagnostics' });
+
+export function storeLastCrash(crash: StoredCrash): void {
+  try { diagnosticsStore.set('lastCrash', crash); } catch (_e) { /* never let storage fail loudly */ }
+}
+
+export function getStoredCrash(): StoredCrash | undefined {
+  try { return diagnosticsStore.get('lastCrash') as StoredCrash | undefined; } catch (_e) { return undefined; }
+}
+
+export function clearStoredCrash(): void {
+  try { diagnosticsStore.delete('lastCrash'); } catch (_e) { /* non-fatal */ }
+}

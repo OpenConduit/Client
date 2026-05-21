@@ -188,4 +188,13 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.send('chat:extension-tool-result', data),
   },
 
+  crash: {
+    /** Returns true if a crash report is stored and available to send. */
+    hasStored: (): Promise<boolean> =>
+      ipcRenderer.invoke('crash:has-stored'),
+    /** Sends the stored crash report to telemetry and clears it. */
+    sendStored: (): Promise<void> =>
+      ipcRenderer.invoke('crash:send-stored'),
+  },
+
 });

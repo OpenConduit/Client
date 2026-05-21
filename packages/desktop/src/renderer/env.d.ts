@@ -96,6 +96,12 @@ declare global {
         /** Send the result of an extension tool call back to the main process. */
         sendResult: (data: { callId: string; result: string; isError: boolean }) => void;
       };
+      crash: {
+        /** Returns true if a crash report has been stored and is available to send. */
+        hasStored: () => Promise<boolean>;
+        /** Sends the stored crash report to telemetry and clears it. */
+        sendStored: () => Promise<void>;
+      };
     };
     /**
      * Global SDK surface exposed for dynamically-loaded extension bundles.

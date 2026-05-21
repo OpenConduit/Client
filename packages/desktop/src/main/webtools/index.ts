@@ -9,8 +9,7 @@
 import { net } from 'electron';
 import { fetchUrlWithBrowser } from './browser';
 import { dispatchSearch, type SearchEngine } from './engines';
-import type { ToolCall, McpToolResult } from '../../shared/types';
-import type { AppSettings } from '../../shared/types';
+import type { ToolCall, McpToolResult, AppSettings } from '../../shared/types';
 
 /** The serverId used for all built-in tool calls. */
 export const BUILTIN_SERVER_ID = '__builtin__';

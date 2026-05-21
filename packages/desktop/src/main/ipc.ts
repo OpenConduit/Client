@@ -19,7 +19,7 @@ import {
   RoutingConfig,
   RoutingDecision,
 } from '../shared/types';
-import { getSettings, setSettings, settingsStore } from './store/settings';
+import { getSettings, setSettings, settingsStore, storeLastCrash, getStoredCrash, clearStoredCrash } from './store/settings';
 import {
   connectMcpServer,
   disconnectMcpServer,
@@ -36,6 +36,76 @@ import { streamGemini } from './providers/gemini';
 import { evaluateRouting } from './routing';
 
 const EXTENSION_SERVER_ID = '__extension__';
+const TELEMETRY_PRIMARY = 'https://updates.openconduit.ai';
+const TELEMETRY_BACKUP  = 'https://openconduit-release-api.chumchal-account.workers.dev';
+
+// ─── Telemetry helpers ────────────────────────────────────────────────────────
+// These are exported so main.ts can call them at boot and on crash.
+// All sends are fire-and-forget; failures are silently swallowed.
+
+async function postTelemetry(payload: object): Promise<void> {
+  const ua = `openconduit/${app.getVersion()}`;
+  const body = JSON.stringify(payload);
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': ua };
+  // Try primary first; fall back to backup if it fails or times out.
+  for (const base of [TELEMETRY_PRIMARY, TELEMETRY_BACKUP]) {
+    try {
+      const res = await fetch(`${base}/telemetry`, {
+        method: 'POST', headers, body,
+        signal: AbortSignal.timeout(4000),
+      });
+      if (res.ok || res.status < 500) return; // success or client error — don't retry
+    } catch { /* try backup */ }
+  }
+}
+
+export async function fireTelemetrySessionStart(): Promise<void> {
+  if (!app.isPackaged) return; // never send telemetry in dev
+  const settings = getSettings();
+  if (!settings.telemetry?.usageReports) return;
+  await postTelemetry({
+    event: 'session_start',
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    providerTypes: settings.providers.map((p) => p.type),
+    mcpEnabled: settings.mcpServers.length > 0,
+    routingEnabled: !!(settings.routing as { enabled?: boolean } | undefined)?.enabled,
+    updateChannel: settings.updateChannel ?? 'stable',
+    features: {
+      aiTaskTracking: !!(settings.labs?.aiTaskTracking),
+      aiClarifyingQuestions: !!(settings.labs?.aiClarifyingQuestions),
+    },
+  });
+}
+
+export async function fireTelemetryCrash(error: Error): Promise<void> {
+  // Always persist the crash locally so users can manually send it later
+  const sanitize = (s: string) =>
+    s.replace(/\(\/[^\s)]+\)/g, '(<path>)').replace(/at \/[^\s]+/g, 'at <path>').slice(0, 3000);
+  storeLastCrash({
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    electronVersion: process.versions.electron,
+    errorType: error.name,
+    errorMessage: error.message.replace(/(?:\/[\w.-]+){2,}/g, '<path>').slice(0, 300),
+    stackTrace: sanitize(error.stack ?? ''),
+    timestamp: new Date().toISOString(),
+  });
+
+  if (!app.isPackaged) return; // never auto-send telemetry in dev
+  const settings = getSettings();
+  if (!settings.telemetry?.crashReports) return;
+  await postTelemetry({
+    event: 'crash',
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    electronVersion: process.versions.electron,
+    errorType: error.name,
+    errorMessage: error.message.replace(/(?:\/[\w.-]+){2,}/g, '<path>').slice(0, 300),
+    stackTrace: sanitize(error.stack ?? ''),
+  });
+}
 
 const abortControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
@@ -830,6 +900,26 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('log:open', async (): Promise<void> => {
     await fs.mkdir(logsDir, { recursive: true });
     await shell.openPath(logsDir);
+  });
+
+  // ─── Crash report: manual send ───────────────────────────────────────────
+  ipcMain.handle('crash:has-stored', (): boolean => {
+    return getStoredCrash() !== undefined;
+  });
+
+  ipcMain.handle('crash:send-stored', async (): Promise<void> => {
+    const crash = getStoredCrash();
+    if (!crash) return;
+    await postTelemetry({
+      event: 'crash',
+      appVersion: crash.appVersion,
+      platform: crash.platform,
+      electronVersion: crash.electronVersion,
+      errorType: crash.errorType,
+      errorMessage: crash.errorMessage,
+      stackTrace: crash.stackTrace,
+    });
+    clearStoredCrash();
   });
 }
 
