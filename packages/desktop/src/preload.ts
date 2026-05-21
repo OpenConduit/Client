@@ -121,6 +121,12 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke(IPC.SETTINGS_IMPORT),
     openSettingsFile: (): Promise<void> =>
       ipcRenderer.invoke('settings:open-file'),
+    /** Export providers + MCP servers (no secrets) to a shareable .ocbundle file. */
+    exportBundle: (meta: { name?: string; description?: string }): Promise<boolean> =>
+      ipcRenderer.invoke('config:export-bundle', meta),
+    /** Open a .ocbundle file and return its contents for merging into settings. */
+    importBundle: (): Promise<import('./shared/types').ConfigBundle | null> =>
+      ipcRenderer.invoke('config:import-bundle'),
   },
   routing: {
     evaluate: (params: {

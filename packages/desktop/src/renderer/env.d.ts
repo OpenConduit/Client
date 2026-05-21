@@ -60,6 +60,10 @@ declare global {
         exportSettings: (redact: boolean) => Promise<boolean>;
         importSettings: () => Promise<AppSettings | null>;
         openSettingsFile: () => Promise<void>;
+        /** Export providers + MCP servers (no secrets) to a shareable .ocbundle file. */
+        exportBundle: (meta: { name?: string; description?: string }) => Promise<boolean>;
+        /** Open a .ocbundle file and return its contents for merging into settings. */
+        importBundle: () => Promise<import('../shared/types').ConfigBundle | null>;
       };
       routing: {
         evaluate: (params: {

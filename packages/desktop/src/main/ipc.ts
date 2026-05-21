@@ -79,7 +79,7 @@ export async function fireTelemetrySessionStart(): Promise<void> {
   });
 }
 
-export async function fireTelemetryCrash(error: Error): Promise<void> {
+export async function fireTelemetryCrash(error: Error, extra?: { crashDumpsDir?: string }): Promise<void> {
   // Always persist the crash locally so users can manually send it later
   const sanitize = (s: string) =>
     s.replace(/\(\/[^\s)]+\)/g, '(<path>)').replace(/at \/[^\s]+/g, 'at <path>').slice(0, 3000);
@@ -91,6 +91,7 @@ export async function fireTelemetryCrash(error: Error): Promise<void> {
     errorMessage: error.message.replace(/(?:\/[\w.-]+){2,}/g, '<path>').slice(0, 300),
     stackTrace: sanitize(error.stack ?? ''),
     timestamp: new Date().toISOString(),
+    ...(extra?.crashDumpsDir ? { crashDumpsDir: extra.crashDumpsDir } : {}),
   });
 
   if (!app.isPackaged) return; // never auto-send telemetry in dev
@@ -355,6 +356,50 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('settings:open-file', async (): Promise<void> => {
     await shell.openPath(settingsStore.path);
+  });
+
+  // ─── Config Bundle Export / Import ──────────────────────────────────────────────
+  // Bundle = providers (no apiKey) + MCP servers (no headers/env). Safe to share.
+  ipcMain.handle('config:export-bundle', async (
+    _e,
+    meta: { name?: string; description?: string },
+  ): Promise<boolean> => {
+    const win = BrowserWindow.getFocusedWindow();
+    const { canceled, filePath: dest } = await dialog.showSaveDialog(win!, {
+      title: 'Export Config Bundle',
+      defaultPath: 'openconduit-bundle.ocbundle',
+      filters: [
+        { name: 'OpenConduit Bundle', extensions: ['ocbundle'] },
+        { name: 'JSON', extensions: ['json'] },
+      ],
+    });
+    if (canceled || !dest) return false;
+    const s = getSettings();
+    const bundle = {
+      version: 1,
+      name: meta?.name || undefined,
+      description: meta?.description || undefined,
+      providers: s.providers.map(({ apiKey: _k, ...rest }) => rest),
+      mcpServers: s.mcpServers.map(({ headers: _h, env: _e, ...rest }) => rest),
+    };
+    await fs.writeFile(dest, JSON.stringify(bundle, null, 2), 'utf-8');
+    return true;
+  });
+
+  ipcMain.handle('config:import-bundle', async (): Promise<import('../shared/types').ConfigBundle | null> => {
+    const win = BrowserWindow.getFocusedWindow();
+    const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
+      title: 'Import Config Bundle',
+      filters: [{ name: 'OpenConduit Bundle', extensions: ['ocbundle', 'json'] }],
+      properties: ['openFile'],
+    });
+    if (canceled || filePaths.length === 0) return null;
+    const raw = await fs.readFile(filePaths[0], 'utf-8');
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!Array.isArray(parsed['providers']) || !Array.isArray(parsed['mcpServers'])) {
+      throw new Error('Invalid bundle: missing providers or mcpServers arrays');
+    }
+    return parsed as unknown as import('../shared/types').ConfigBundle;
   });
 
   // ─── Routing Evaluation ────────────────────────────────────────────────────

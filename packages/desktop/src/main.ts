@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, autoUpdater } from 'electron';
+import { app, BrowserWindow, session, autoUpdater, crashReporter } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
@@ -8,6 +8,11 @@ import { getSettings } from './main/store/settings';
 import { destroyBrowserWindow } from './main/webtools/browser';
 
 if (started) app.quit();
+
+// Enable Crashpad crash reporter so minidumps are written to disk for renderer,
+// GPU-process and main-process crashes. Must be called before the first window
+// is created so that renderer processes inherit the reporter configuration.
+crashReporter.start({ submitURL: '', uploadToServer: false });
 
 // Pin userData to a stable name so it never moves when productName changes.
 app.setPath('userData', path.join(app.getPath('appData'), 'openconduit'));
@@ -68,7 +73,7 @@ const createWindow = () => {
 
     const err = new Error(`Renderer process gone (${details.reason}, exit ${details.exitCode})`);
     err.name = 'RendererCrash';
-    void fireTelemetryCrash(err);
+    void fireTelemetryCrash(err, { crashDumpsDir: app.getPath('crashDumps') });
 
     setTimeout(() => {
       if (mainWindow.isDestroyed()) return;
