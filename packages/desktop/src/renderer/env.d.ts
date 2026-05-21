@@ -86,6 +86,10 @@ declare global {
         /** Subscribe to log entries pushed from the main process. Returns an unsub fn. */
         onConsoleEntry: (cb: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void) => (() => void);
       };
+      webtools: {
+        /** Run a quick smoke-test of web_fetch or web_search with current settings. */
+        test: (type: 'fetch' | 'search') => Promise<{ ok: boolean; message: string }>;
+      };
 
     };
     /**

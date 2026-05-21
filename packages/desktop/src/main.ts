@@ -5,6 +5,7 @@ import started from 'electron-squirrel-startup';
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import { registerIpcHandlers } from './main/ipc';
 import { getSettings } from './main/store/settings';
+import { destroyBrowserWindow } from './main/webtools/browser';
 
 if (started) app.quit();
 
@@ -132,6 +133,7 @@ app.on('ready', () => {
 registerIpcHandlers();
 
 app.on('window-all-closed', () => {
+  destroyBrowserWindow();
   if (process.platform !== 'darwin') app.quit();
 });
 

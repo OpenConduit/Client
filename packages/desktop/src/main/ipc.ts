@@ -30,6 +30,7 @@ import {
 import { streamAnthropic } from './providers/anthropic';
 import { streamOpenAI } from './providers/openai';
 import { streamLmStudio } from './providers/lmstudio';
+import { callWebTool, BUILTIN_SERVER_ID } from './webtools';
 import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { evaluateRouting } from './routing';
@@ -199,6 +200,35 @@ export function registerIpcHandlers(): void {
       throw new Error('Only http/https URLs are allowed');
     }
     await shell.openExternal(url);
+  });
+
+  // ─── Web Tool Test ──────────────────────────────────────────────────────────
+
+  ipcMain.handle('webtool:test', async (_e, type: 'fetch' | 'search'): Promise<{ ok: boolean; message: string }> => {
+    try {
+      const settings = getSettings();
+      if (type === 'fetch') {
+        const { fetchUrlWithBrowser } = await import('./webtools/browser');
+        const text = await fetchUrlWithBrowser('https://example.com', false);
+        return { ok: true, message: `Fetched ${text.length.toLocaleString()} chars from example.com` };
+      } else {
+        const { dispatchSearch } = await import('./webtools/engines');
+        const s = settings as unknown as Record<string, Record<string, unknown>>;
+        const ws = s?.webSearch ?? {};
+        const results = await dispatchSearch('test', {
+          engine: (ws.engine as import('./webtools/engines').SearchEngine) ?? 'google',
+          apiKey: ws.apiKey as string | undefined,
+          googleCx: ws.googleCx as string | undefined,
+          maxResults: 3,
+          showBrowser: false,
+          excludeWebsites: [],
+        });
+        if (results.length === 0) return { ok: false, message: 'Search returned 0 results — check your engine settings.' };
+        return { ok: true, message: `Search returned ${results.length} result${results.length !== 1 ? 's' : ''}: "${results[0]?.title}"` };
+      }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   // ─── Settings Export / Import ───────────────────────────────────────────────
@@ -539,6 +569,8 @@ export function registerIpcHandlers(): void {
 
           const tools =
             enabledMcpServerIds.length > 0 ? await listAllTools(enabledMcpServerIds) : [];
+          // Append built-in tools injected by first-party extensions (web_fetch, web_search)
+          tools.push(...(request.builtinTools ?? []));
 
           const getStream = () => {
             switch (provider.type) {
@@ -637,6 +669,24 @@ export function registerIpcHandlers(): void {
 
             const mcpTool = tools.find((t) => t.name === tc.name);
             const serverId = tc.serverId ?? mcpTool?.serverId;
+
+            // Route built-in tools (web_fetch, web_search) to the local handler
+            if (serverId === BUILTIN_SERVER_ID) {
+              const t0 = performance.now();
+              const result = await callWebTool(tc, settings);
+              const durationMs = Math.round(performance.now() - t0);
+              processedCalls.push({
+                ...tc,
+                serverId: BUILTIN_SERVER_ID,
+                approved: true,
+                result: result.result,
+                isError: result.isError,
+                pending: false,
+                durationMs,
+              });
+              continue;
+            }
+
             if (!serverId) {
               processedCalls.push({
                 ...tc,

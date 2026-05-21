@@ -162,4 +162,13 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  webtools: {
+    /**
+     * Run a quick smoke-test of the web fetch or search tool using the current
+     * settings and return a human-readable result message.
+     */
+    test: (type: 'fetch' | 'search'): Promise<{ ok: boolean; message: string }> =>
+      ipcRenderer.invoke('webtool:test', type),
+  },
+
 });
