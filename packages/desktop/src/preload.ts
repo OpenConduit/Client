@@ -110,6 +110,9 @@ contextBridge.exposeInMainWorld('api', {
     /** Quit and install the downloaded update immediately. */
     restartAndInstall: (): Promise<void> =>
       ipcRenderer.invoke('update:restart'),
+    /** Trigger an on-demand Squirrel download; fires update:downloaded when ready. */
+    triggerDownload: (): Promise<void> =>
+      ipcRenderer.invoke('update:trigger-download'),
   },
   config: {
     exportSettings: (redact: boolean): Promise<boolean> =>

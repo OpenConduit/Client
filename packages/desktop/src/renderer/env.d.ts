@@ -53,6 +53,8 @@ declare global {
         onUpdateDownloaded: (cb: () => void) => (() => void);
         /** Quit and install the downloaded update immediately. */
         restartAndInstall: () => Promise<void>;
+        /** Trigger an on-demand Squirrel download; fires update:downloaded when ready. */
+        triggerDownload: () => Promise<void>;
       };
       config: {
         exportSettings: (redact: boolean) => Promise<boolean>;
