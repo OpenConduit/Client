@@ -19,7 +19,7 @@ import {
   RoutingConfig,
   RoutingDecision,
 } from '../shared/types';
-import { getSettings, setSettings, settingsStore } from './store/settings';
+import { getSettings, setSettings, settingsStore, storeLastCrash, getStoredCrash, clearStoredCrash } from './store/settings';
 import {
   connectMcpServer,
   disconnectMcpServer,
@@ -30,12 +30,86 @@ import {
 import { streamAnthropic } from './providers/anthropic';
 import { streamOpenAI } from './providers/openai';
 import { streamLmStudio } from './providers/lmstudio';
+import { callWebTool, BUILTIN_SERVER_ID } from './webtools';
 import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { evaluateRouting } from './routing';
 
+const EXTENSION_SERVER_ID = '__extension__';
+const TELEMETRY_PRIMARY = 'https://updates.openconduit.ai';
+const TELEMETRY_BACKUP  = 'https://openconduit-release-api.chumchal-account.workers.dev';
+
+// ─── Telemetry helpers ────────────────────────────────────────────────────────
+// These are exported so main.ts can call them at boot and on crash.
+// All sends are fire-and-forget; failures are silently swallowed.
+
+async function postTelemetry(payload: object): Promise<void> {
+  const ua = `openconduit/${app.getVersion()}`;
+  const body = JSON.stringify(payload);
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': ua };
+  // Try primary first; fall back to backup if it fails or times out.
+  for (const base of [TELEMETRY_PRIMARY, TELEMETRY_BACKUP]) {
+    try {
+      const res = await fetch(`${base}/telemetry`, {
+        method: 'POST', headers, body,
+        signal: AbortSignal.timeout(4000),
+      });
+      if (res.ok || res.status < 500) return; // success or client error — don't retry
+    } catch { /* try backup */ }
+  }
+}
+
+export async function fireTelemetrySessionStart(): Promise<void> {
+  if (!app.isPackaged) return; // never send telemetry in dev
+  const settings = getSettings();
+  if (!settings.telemetry?.usageReports) return;
+  await postTelemetry({
+    event: 'session_start',
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    providerTypes: settings.providers.map((p) => p.type),
+    mcpEnabled: settings.mcpServers.length > 0,
+    routingEnabled: !!(settings.routing as { enabled?: boolean } | undefined)?.enabled,
+    updateChannel: settings.updateChannel ?? 'stable',
+    features: {
+      aiTaskTracking: !!(settings.labs?.aiTaskTracking),
+      aiClarifyingQuestions: !!(settings.labs?.aiClarifyingQuestions),
+    },
+  });
+}
+
+export async function fireTelemetryCrash(error: Error): Promise<void> {
+  // Always persist the crash locally so users can manually send it later
+  const sanitize = (s: string) =>
+    s.replace(/\(\/[^\s)]+\)/g, '(<path>)').replace(/at \/[^\s]+/g, 'at <path>').slice(0, 3000);
+  storeLastCrash({
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    electronVersion: process.versions.electron,
+    errorType: error.name,
+    errorMessage: error.message.replace(/(?:\/[\w.-]+){2,}/g, '<path>').slice(0, 300),
+    stackTrace: sanitize(error.stack ?? ''),
+    timestamp: new Date().toISOString(),
+  });
+
+  if (!app.isPackaged) return; // never auto-send telemetry in dev
+  const settings = getSettings();
+  if (!settings.telemetry?.crashReports) return;
+  await postTelemetry({
+    event: 'crash',
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    electronVersion: process.versions.electron,
+    errorType: error.name,
+    errorMessage: error.message.replace(/(?:\/[\w.-]+){2,}/g, '<path>').slice(0, 300),
+    stackTrace: sanitize(error.stack ?? ''),
+  });
+}
+
 const abortControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
+const pendingExtensionToolCalls = new Map<string, (result: { result: string; isError: boolean }) => void>();
 
 async function writeLog(level: string, category: string, message: string, data?: unknown): Promise<void> {
   try {
@@ -68,6 +142,18 @@ export function registerIpcHandlers(): void {
       if (resolve) {
         pendingApprovals.delete(toolId);
         resolve(approved);
+      }
+    },
+  );
+
+  // Extension tool execution results (renderer → main)
+  ipcMain.on(
+    'chat:extension-tool-result',
+    (_e, { callId, result, isError }: { callId: string; result: string; isError: boolean }) => {
+      const resolve = pendingExtensionToolCalls.get(callId);
+      if (resolve) {
+        pendingExtensionToolCalls.delete(callId);
+        resolve({ result, isError });
       }
     },
   );
@@ -199,6 +285,35 @@ export function registerIpcHandlers(): void {
       throw new Error('Only http/https URLs are allowed');
     }
     await shell.openExternal(url);
+  });
+
+  // ─── Web Tool Test ──────────────────────────────────────────────────────────
+
+  ipcMain.handle('webtool:test', async (_e, type: 'fetch' | 'search'): Promise<{ ok: boolean; message: string }> => {
+    try {
+      const settings = getSettings();
+      if (type === 'fetch') {
+        const { fetchUrlWithBrowser } = await import('./webtools/browser');
+        const text = await fetchUrlWithBrowser('https://example.com', false);
+        return { ok: true, message: `Fetched ${text.length.toLocaleString()} chars from example.com` };
+      } else {
+        const { dispatchSearch } = await import('./webtools/engines');
+        const s = settings as unknown as Record<string, Record<string, unknown>>;
+        const ws = s?.webSearch ?? {};
+        const results = await dispatchSearch('test', {
+          engine: (ws.engine as import('./webtools/engines').SearchEngine) ?? 'google',
+          apiKey: ws.apiKey as string | undefined,
+          googleCx: ws.googleCx as string | undefined,
+          maxResults: 3,
+          showBrowser: false,
+          excludeWebsites: [],
+        });
+        if (results.length === 0) return { ok: false, message: 'Search returned 0 results — check your engine settings.' };
+        return { ok: true, message: `Search returned ${results.length} result${results.length !== 1 ? 's' : ''}: "${results[0]?.title}"` };
+      }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   // ─── Settings Export / Import ───────────────────────────────────────────────
@@ -539,6 +654,8 @@ export function registerIpcHandlers(): void {
 
           const tools =
             enabledMcpServerIds.length > 0 ? await listAllTools(enabledMcpServerIds) : [];
+          // Append built-in tools injected by first-party extensions (web_fetch, web_search)
+          tools.push(...(request.builtinTools ?? []));
 
           const getStream = () => {
             switch (provider.type) {
@@ -637,6 +754,42 @@ export function registerIpcHandlers(): void {
 
             const mcpTool = tools.find((t) => t.name === tc.name);
             const serverId = tc.serverId ?? mcpTool?.serverId;
+
+            // Route built-in tools (web_fetch, web_search) to the local handler
+            if (serverId === BUILTIN_SERVER_ID) {
+              const t0 = performance.now();
+              const result = await callWebTool(tc, settings);
+              const durationMs = Math.round(performance.now() - t0);
+              processedCalls.push({
+                ...tc,
+                serverId: BUILTIN_SERVER_ID,
+                approved: true,
+                result: result.result,
+                isError: result.isError,
+                pending: false,
+                durationMs,
+              });
+              continue;
+            }
+
+            // Route extension-contributed tools back to the renderer for execution
+            if (serverId === EXTENSION_SERVER_ID) {
+              const callId = uuidv4();
+              const t0 = performance.now();
+              const result = await callExtensionTool(wc, callId, tc);
+              const durationMs = Math.round(performance.now() - t0);
+              processedCalls.push({
+                ...tc,
+                serverId: EXTENSION_SERVER_ID,
+                approved: true,
+                result: result.result,
+                isError: result.isError,
+                pending: false,
+                durationMs,
+              });
+              continue;
+            }
+
             if (!serverId) {
               processedCalls.push({
                 ...tc,
@@ -748,6 +901,26 @@ export function registerIpcHandlers(): void {
     await fs.mkdir(logsDir, { recursive: true });
     await shell.openPath(logsDir);
   });
+
+  // ─── Crash report: manual send ───────────────────────────────────────────
+  ipcMain.handle('crash:has-stored', (): boolean => {
+    return getStoredCrash() !== undefined;
+  });
+
+  ipcMain.handle('crash:send-stored', async (): Promise<void> => {
+    const crash = getStoredCrash();
+    if (!crash) return;
+    await postTelemetry({
+      event: 'crash',
+      appVersion: crash.appVersion,
+      platform: crash.platform,
+      electronVersion: crash.electronVersion,
+      errorType: crash.errorType,
+      errorMessage: crash.errorMessage,
+      stackTrace: crash.stackTrace,
+    });
+    clearStoredCrash();
+  });
 }
 
 function requestApproval(
@@ -763,5 +936,24 @@ function requestApproval(
       messageId,
       toolCall,
     } as ToolApprovalRequest);
+  });
+}
+
+/**
+ * Ask the renderer to execute an extension-contributed tool handler.
+ * Sends `chat:extension-tool-call` and waits for `chat:extension-tool-result`.
+ */
+function callExtensionTool(
+  wc: WebContents,
+  callId: string,
+  toolCall: ToolCall,
+): Promise<{ result: string; isError: boolean }> {
+  return new Promise((resolve) => {
+    pendingExtensionToolCalls.set(callId, resolve);
+    wc.send('chat:extension-tool-call', {
+      callId,
+      toolName: toolCall.name,
+      input: toolCall.input,
+    });
   });
 }

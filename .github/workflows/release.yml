@@ -65,6 +65,16 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           NODE_ENV: production
 
+      - name: Rename macOS artifacts
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}"
+          VERSION="${TAG#v}"
+          # Rename the DMG to include version and arch (ZIP from MakerZIP is already named correctly)
+          DMG=$(find packages/desktop/out/make -name "*.dmg" | head -1)
+          if [ -n "$DMG" ]; then
+            mv "$DMG" "packages/desktop/out/make/OpenConduit-mac-arm64-${VERSION}.dmg"
+          fi
+
       - name: Clean up keychain
         if: always()
         run: |
@@ -106,6 +116,18 @@ jobs:
         run: npm run make -- --platform win32 --arch ${{ matrix.arch }}
         env:
           NODE_ENV: production
+
+      - name: Rename Windows artifacts
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}"
+          $VERSION = $tag -replace '^v', ''
+          $arch = "${{ matrix.arch }}"
+          # Rename Setup.exe to follow -win32-{arch} naming convention required by the auto-updater
+          $setupExe = Get-ChildItem -Path "packages/desktop/out/make" -Recurse -Filter "*Setup.exe" | Select-Object -First 1
+          if ($setupExe) {
+            Rename-Item -Path $setupExe.FullName -NewName "OpenConduit-win32-${arch}-${VERSION}.exe"
+          }
 
       - name: Upload Windows ${{ matrix.arch }} artifacts
         uses: actions/upload-artifact@v4

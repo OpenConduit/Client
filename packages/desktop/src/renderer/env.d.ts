@@ -86,7 +86,22 @@ declare global {
         /** Subscribe to log entries pushed from the main process. Returns an unsub fn. */
         onConsoleEntry: (cb: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void) => (() => void);
       };
-
+      webtools: {
+        /** Run a quick smoke-test of web_fetch or web_search with current settings. */
+        test: (type: 'fetch' | 'search') => Promise<{ ok: boolean; message: string }>;
+      };
+      extensionTools: {
+        /** Listen for the main process requesting an extension tool call. Returns an unsub fn. */
+        onCall: (cb: (data: { callId: string; toolName: string; input: Record<string, unknown> }) => void) => UnsubFn;
+        /** Send the result of an extension tool call back to the main process. */
+        sendResult: (data: { callId: string; result: string; isError: boolean }) => void;
+      };
+      crash: {
+        /** Returns true if a crash report has been stored and is available to send. */
+        hasStored: () => Promise<boolean>;
+        /** Sends the stored crash report to telemetry and clears it. */
+        sendStored: () => Promise<void>;
+      };
     };
     /**
      * Global SDK surface exposed for dynamically-loaded extension bundles.

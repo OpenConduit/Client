@@ -3,8 +3,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
-import { registerIpcHandlers } from './main/ipc';
+import { registerIpcHandlers, fireTelemetrySessionStart, fireTelemetryCrash } from './main/ipc';
 import { getSettings } from './main/store/settings';
+import { destroyBrowserWindow } from './main/webtools/browser';
 
 if (started) app.quit();
 
@@ -131,7 +132,19 @@ app.on('ready', () => {
 });
 registerIpcHandlers();
 
+// Fire anonymous session-start telemetry once the app is fully ready.
+// This is a no-op if the user has not opted in.
+app.whenReady().then((): void => { void fireTelemetrySessionStart(); });
+
+// Catch uncaught main-process errors and report them if crash reports are enabled.
+process.on('uncaughtException', (err) => { void fireTelemetryCrash(err); });
+process.on('unhandledRejection', (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  void fireTelemetryCrash(err);
+});
+
 app.on('window-all-closed', () => {
+  destroyBrowserWindow();
   if (process.platform !== 'darwin') app.quit();
 });
 

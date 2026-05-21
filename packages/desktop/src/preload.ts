@@ -162,4 +162,39 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  webtools: {
+    /**
+     * Run a quick smoke-test of the web fetch or search tool using the current
+     * settings and return a human-readable result message.
+     */
+    test: (type: 'fetch' | 'search'): Promise<{ ok: boolean; message: string }> =>
+      ipcRenderer.invoke('webtool:test', type),
+  },
+
+  extensionTools: {
+    /**
+     * Listen for the main process asking the renderer to execute an extension
+     * tool. Returns an unsubscribe function.
+     */
+    onCall: (cb: (data: { callId: string; toolName: string; input: Record<string, unknown> }) => void): UnsubFn => {
+      const handler = (_: Electron.IpcRendererEvent, data: unknown) =>
+        cb(data as Parameters<typeof cb>[0]);
+      ipcRenderer.on('chat:extension-tool-call', handler);
+      return () => ipcRenderer.removeListener('chat:extension-tool-call', handler);
+    },
+
+    /** Send the result of an extension tool call back to the main process. */
+    sendResult: (data: { callId: string; result: string; isError: boolean }): void =>
+      ipcRenderer.send('chat:extension-tool-result', data),
+  },
+
+  crash: {
+    /** Returns true if a crash report is stored and available to send. */
+    hasStored: (): Promise<boolean> =>
+      ipcRenderer.invoke('crash:has-stored'),
+    /** Sends the stored crash report to telemetry and clears it. */
+    sendStored: (): Promise<void> =>
+      ipcRenderer.invoke('crash:send-stored'),
+  },
+
 });
