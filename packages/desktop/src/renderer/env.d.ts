@@ -49,6 +49,10 @@ declare global {
         checkForUpdates: () => Promise<UpdateInfo>;
         submitFeedback: (payload: Omit<FeedbackPayload, 'appVersion' | 'platform'>) => Promise<void>;
         openExternal: (url: string) => Promise<void>;
+        /** Subscribe to be notified when an update has been downloaded. Returns an unsub fn. */
+        onUpdateDownloaded: (cb: () => void) => (() => void);
+        /** Quit and install the downloaded update immediately. */
+        restartAndInstall: () => Promise<void>;
       };
       config: {
         exportSettings: (redact: boolean) => Promise<boolean>;
@@ -79,7 +83,10 @@ declare global {
         write: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void;
         /** Open the userData/logs/ folder in Finder / Explorer. */
         open: () => Promise<void>;
+        /** Subscribe to log entries pushed from the main process. Returns an unsub fn. */
+        onConsoleEntry: (cb: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void) => (() => void);
       };
+
     };
     /**
      * Global SDK surface exposed for dynamically-loaded extension bundles.

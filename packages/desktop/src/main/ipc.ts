@@ -1,6 +1,7 @@
-import { BrowserWindow, ipcMain, WebContents, app, shell, dialog } from 'electron';
+import { BrowserWindow, ipcMain, WebContents, app, shell, dialog, autoUpdater } from 'electron';
 import fs from 'fs/promises';
 import path from 'node:path';
+import semver from 'semver';
 import { v4 as uuidv4 } from 'uuid';
 import {
   IPC,
@@ -35,6 +36,28 @@ import { evaluateRouting } from './routing';
 
 const abortControllers = new Map<string, AbortController>();
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
+
+async function writeLog(level: string, category: string, message: string, data?: unknown): Promise<void> {
+  try {
+    const logsDir = path.join(app.getPath('userData'), 'logs');
+    await fs.mkdir(logsDir, { recursive: true });
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+    const dataStr = data !== undefined ? ' ' + JSON.stringify(data) : '';
+    const line = `[${time}] [${level.toUpperCase().padEnd(5)}] [${category}] ${message}${dataStr}\n`;
+    await fs.appendFile(path.join(logsDir, `debug-${dateStr}.log`), line, 'utf-8');
+  } catch { /* non-fatal */ }
+}
+
+/** Write to the log file AND push to the in-app debug console panel in all renderer windows. */
+function broadcastConsole(level: string, category: string, message: string, data?: unknown): void {
+  void writeLog(level, category, message, data);
+  const entry = { ts: Date.now(), level, message, data, category };
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('log:console', entry);
+  }
+}
 
 export function registerIpcHandlers(): void {
   // Tool approval responses
@@ -329,7 +352,25 @@ export function registerIpcHandlers(): void {
     const userAgent = `openconduit/${currentVersion}`;
     const channel = (getSettings().updateChannel ?? 'stable') as 'stable' | 'beta' | 'alpha';
 
-    // Try Worker first (if configured), fall back to GitHub Releases API
+    /**
+     * Compute hasUpdate / isDowngrade for a candidate version.
+     * - Normal upgrade: candidate > current
+     * - Downgrade to stable: running a pre-release on stable channel → always
+     *   surface the stable release so the user can switch back.
+     */
+    function resolveUpdate(latestVersion: string): { hasUpdate: boolean; isDowngrade: boolean } {
+      if (!semver.valid(latestVersion)) return { hasUpdate: false, isDowngrade: false };
+      if (semver.gt(latestVersion, currentVersion)) return { hasUpdate: true, isDowngrade: false };
+      // Running a pre-release while on the stable channel — offer the stable release.
+      const runningPrerelease = semver.prerelease(currentVersion) !== null;
+      if (runningPrerelease && channel === 'stable' && semver.lt(latestVersion, currentVersion)) {
+        return { hasUpdate: true, isDowngrade: true };
+      }
+      return { hasUpdate: false, isDowngrade: false };
+    }
+
+    // Try Worker first (if configured), fall back to GitHub Releases API,
+    // then fall back to update.electronjs.org (Electron's hosted proxy for GitHub Releases).
     if (WORKER_URL) {
       try {
         const res = await fetch(`${WORKER_URL}/latest?channel=${channel}`, {
@@ -338,8 +379,8 @@ export function registerIpcHandlers(): void {
         });
         if (res.ok) {
           const data = await res.json() as { version: string; notes?: string; url?: string };
-          const hasUpdate = data.version !== currentVersion;
-          return { hasUpdate, latestVersion: data.version, currentVersion, releaseNotes: data.notes, downloadUrl: data.url };
+          const { hasUpdate, isDowngrade } = resolveUpdate(data.version);
+          return { hasUpdate, isDowngrade, latestVersion: data.version, currentVersion, releaseNotes: data.notes, downloadUrl: data.url };
         }
       } catch { /* fall through to GitHub */ }
     }
@@ -354,7 +395,8 @@ export function registerIpcHandlers(): void {
         if (!res.ok) throw new Error(`GitHub API returned HTTP ${res.status}`);
         const data = await res.json() as { tag_name: string; body?: string; html_url: string };
         const latestVersion = data.tag_name.replace(/^v/, '');
-        return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: data.body, downloadUrl: data.html_url };
+        const { hasUpdate, isDowngrade } = resolveUpdate(latestVersion);
+        return { hasUpdate, isDowngrade, latestVersion, currentVersion, releaseNotes: data.body, downloadUrl: data.html_url };
       } else {
         // Beta/Alpha: scan all releases for the newest matching pre-release tag
         const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20`, {
@@ -376,16 +418,39 @@ export function registerIpcHandlers(): void {
           const fallback = releases.find((r) => !r.prerelease);
           if (fallback) {
             const latestVersion = fallback.tag_name.replace(/^v/, '');
-            return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: fallback.body, downloadUrl: fallback.html_url };
+            const { hasUpdate, isDowngrade } = resolveUpdate(latestVersion);
+            return { hasUpdate, isDowngrade, latestVersion, currentVersion, releaseNotes: fallback.body, downloadUrl: fallback.html_url };
           }
           throw new Error('No releases found');
         }
         const latestVersion = match.tag_name.replace(/^v/, '');
-        return { hasUpdate: latestVersion !== currentVersion, latestVersion, currentVersion, releaseNotes: match.body, downloadUrl: match.html_url };
+        const { hasUpdate, isDowngrade } = resolveUpdate(latestVersion);
+        return { hasUpdate, isDowngrade, latestVersion, currentVersion, releaseNotes: match.body, downloadUrl: match.html_url };
       }
-    } catch (err) {
-      throw new Error(`Update check failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } catch { /* fall through to update.electronjs.org backup */ }
+
+    // Backup: update.electronjs.org — Electron's hosted GitHub Releases proxy.
+    // Returns 204 (no update) or JSON { url } / { name } when an update exists.
+    try {
+      const platform = process.platform === 'darwin' ? 'darwin' : process.platform === 'win32' ? 'win32' : 'linux';
+      const res = await fetch(
+        `https://update.electronjs.org/OpenConduit/Client/${platform}-${process.arch}/${currentVersion}`,
+        { headers: { 'User-Agent': userAgent }, signal: AbortSignal.timeout(8000) },
+      );
+      if (res.status === 204) {
+        return { hasUpdate: false, latestVersion: currentVersion, currentVersion };
+      }
+      if (res.ok) {
+        const data = await res.json() as { name?: string; url?: string; notes?: string };
+        const latestVersion = (data.name ?? currentVersion).replace(/^v/, '');
+        const { hasUpdate, isDowngrade } = resolveUpdate(latestVersion);
+        return { hasUpdate, isDowngrade, latestVersion, currentVersion, releaseNotes: data.notes, downloadUrl: data.url };
+      }
+    } catch { /* all sources exhausted */ }
+
+    // All sources exhausted — return gracefully so the UI shows a soft error
+    // rather than crashing the settings panel.
+    throw new Error(`Update check failed: all sources unreachable (Worker, GitHub API, update.electronjs.org)`);
   });
 
   // ─── Feedback Submit ──────────────────────────────────────────────────────
@@ -410,6 +475,11 @@ export function registerIpcHandlers(): void {
     const body = `${payload.description}\n\n---\n_App version: ${app.getVersion()} · Platform: ${process.platform}_`;
     const url = `https://github.com/${GITHUB_REPO}/issues/new?title=${encodeURIComponent(payload.title)}&body=${encodeURIComponent(body)}&labels=${label}`;
     await shell.openExternal(url);
+  });
+
+  // ─── Update: Restart & Install ───────────────────────────────────────────
+  ipcMain.handle('update:restart', (): void => {
+    autoUpdater.quitAndInstall();
   });
 
   // ─── Abort ───────────────────────────────────────────────────────────────
@@ -490,8 +560,15 @@ export function registerIpcHandlers(): void {
           let toolCalls: ToolCall[] = [];
           let turnUsage: import('../shared/types').TokenUsage | undefined;
 
+          broadcastConsole('info', 'provider', 'Stream request sent', { provider: provider.type, model, iteration, tools: tools.length, messages: messages.length });
+          let firstEvent = true;
+
           for await (const event of getStream()) {
             if (abort.signal.aborted) break;
+            if (firstEvent) {
+              broadcastConsole('info', 'provider', 'First event received', { type: event.type });
+              firstEvent = false;
+            }
             if (event.type === 'delta') {
               fullText += event.text;
               wc.send(IPC.CHAT_STREAM_CHUNK, {
@@ -514,6 +591,8 @@ export function registerIpcHandlers(): void {
           }
 
           if (abort.signal.aborted) break;
+
+          broadcastConsole('info', 'provider', 'Stream complete', { chars: fullText.length, toolCalls: toolCalls.length, hadUsage: !!turnUsage, firstEventReceived: !firstEvent });
 
           if (toolCalls.length === 0) {
             // No tool calls — conversation turn is complete
@@ -609,11 +688,13 @@ export function registerIpcHandlers(): void {
           messages = [...messages, assistantMsg, toolResultMsg];
         }
       } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        broadcastConsole('error', 'provider', 'Stream error', { error: errMsg, stack: err instanceof Error ? err.stack : undefined });
         if (!abort.signal.aborted) {
           wc.send(IPC.CHAT_STREAM_ERROR, {
             conversationId,
             messageId,
-            error: err instanceof Error ? err.message : String(err),
+            error: errMsg,
           } as StreamError);
         }
       } finally {

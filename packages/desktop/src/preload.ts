@@ -101,6 +101,15 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke(IPC.FEEDBACK_SUBMIT, payload),
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
+    /** Subscribe to be notified when an update has been downloaded. Returns an unsub fn. */
+    onUpdateDownloaded: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('update:downloaded', handler);
+      return () => ipcRenderer.removeListener('update:downloaded', handler);
+    },
+    /** Quit and install the downloaded update immediately. */
+    restartAndInstall: (): Promise<void> =>
+      ipcRenderer.invoke('update:restart'),
   },
   config: {
     exportSettings: (redact: boolean): Promise<boolean> =>
@@ -145,5 +154,12 @@ contextBridge.exposeInMainWorld('api', {
     /** Open the userData/logs/ folder in Finder / Explorer. */
     open: (): Promise<void> =>
       ipcRenderer.invoke('log:open'),
+    /** Subscribe to log entries pushed from the main process. Returns an unsub fn. */
+    onConsoleEntry: (cb: (entry: { ts: number; level: string; message: string; data?: unknown; category?: string }) => void): (() => void) => {
+      const handler = (_: Electron.IpcRendererEvent, entry: unknown) => cb(entry as Parameters<typeof cb>[0]);
+      ipcRenderer.on('log:console', handler);
+      return () => ipcRenderer.removeListener('log:console', handler);
+    },
   },
+
 });
