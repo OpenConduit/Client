@@ -29,6 +29,10 @@ const defaults = {
     routing: false,
     settings: false,
   },
+  telemetry: {
+    usageReports: true,
+    crashReports: true,
+  },
 } as AppSettings;
 
 function createSettingsStore() {

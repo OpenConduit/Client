@@ -597,6 +597,38 @@ export function registerIpcHandlers(): void {
     autoUpdater.quitAndInstall();
   });
 
+  // ─── Update: Trigger Download ─────────────────────────────────────────────
+  // Sets the Squirrel feed URL (needed when updateMode is 'manual') and kicks
+  // off a download.  The 'update:downloaded' event will be sent to all windows
+  // when the download completes so the UI can show "Restart & Install".
+  ipcMain.handle('update:trigger-download', async (): Promise<void> => {
+    const channel = (getSettings().updateChannel ?? 'stable') as 'stable' | 'beta' | 'alpha';
+    const urlPath = `updates/${channel}/${process.platform}/${process.arch}`;
+    const primary = `https://updates.openconduit.ai/${urlPath}`;
+    const backup  = `https://openconduit-release-api.chumchal-account.workers.dev/${urlPath}`;
+    const probe   = process.platform === 'darwin' ? 'RELEASES.json' : 'RELEASES';
+
+    let baseUrl = backup;
+    try {
+      const res = await fetch(`${primary}/${probe}`, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(4000),
+      });
+      if (res.ok || res.status === 204) baseUrl = primary;
+    } catch { /* primary unreachable — use backup */ }
+
+    autoUpdater.setFeedURL({ url: `${baseUrl}/${probe}` });
+
+    // Notify the renderer once so the "Restart & Install" banner appears.
+    autoUpdater.once('update-downloaded', () => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('update:downloaded');
+      }
+    });
+
+    autoUpdater.checkForUpdates();
+  });
+
   // ─── Abort ───────────────────────────────────────────────────────────────
   ipcMain.on(IPC.CHAT_ABORT, (_e, conversationId: string) => {
     abortControllers.get(conversationId)?.abort();

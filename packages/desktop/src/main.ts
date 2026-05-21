@@ -61,6 +61,27 @@ const createWindow = () => {
     );
   }
 
+  // Reload automatically when the renderer crashes instead of staying white.
+  // Skips clean exits (e.g. deliberate reload / navigation) to avoid loops.
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') return;
+
+    const err = new Error(`Renderer process gone (${details.reason}, exit ${details.exitCode})`);
+    err.name = 'RendererCrash';
+    void fireTelemetryCrash(err);
+
+    setTimeout(() => {
+      if (mainWindow.isDestroyed()) return;
+      if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+        mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+      } else {
+        mainWindow.loadFile(
+          path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+        );
+      }
+    }, 500);
+  });
+
 };
 
 app.on('ready', () => {
