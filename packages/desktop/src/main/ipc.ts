@@ -31,6 +31,7 @@ import { streamAnthropic } from './providers/anthropic';
 import { streamOpenAI } from './providers/openai';
 import { streamLmStudio } from './providers/lmstudio';
 import { callWebTool, BUILTIN_SERVER_ID } from './webtools';
+import { callFileTool, FILE_SERVER_ID, FILE_TOOL_DEFS } from './filetools';
 import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { evaluateRouting } from './routing';
@@ -750,6 +751,10 @@ export function registerIpcHandlers(): void {
             enabledMcpServerIds.length > 0 ? await listAllTools(enabledMcpServerIds) : [];
           // Append built-in tools injected by first-party extensions (web_fetch, web_search)
           tools.push(...(request.builtinTools ?? []));
+          // Inject file tools when a folder with a rootPath is attached
+          if (request.folderContext?.rootPath) {
+            tools.push(...FILE_TOOL_DEFS);
+          }
 
           const getStream = () => {
             switch (provider.type) {
@@ -857,6 +862,24 @@ export function registerIpcHandlers(): void {
               processedCalls.push({
                 ...tc,
                 serverId: BUILTIN_SERVER_ID,
+                approved: true,
+                result: result.result,
+                isError: result.isError,
+                pending: false,
+                durationMs,
+              });
+              continue;
+            }
+
+            // Route file tools (file_read, file_write, …) to the local handler
+            if (serverId === FILE_SERVER_ID) {
+              const rootPath = request.folderContext?.rootPath ?? '';
+              const t0 = performance.now();
+              const result = await callFileTool(tc, rootPath);
+              const durationMs = Math.round(performance.now() - t0);
+              processedCalls.push({
+                ...tc,
+                serverId: FILE_SERVER_ID,
                 approved: true,
                 result: result.result,
                 isError: result.isError,
