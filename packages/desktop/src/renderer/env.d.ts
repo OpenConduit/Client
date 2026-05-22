@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   ChatRequest,
+  FolderEntry,
   McpServerConfig,
   McpTool,
   StreamChunk,
@@ -107,6 +108,16 @@ declare global {
         hasStored: () => Promise<boolean>;
         /** Sends the stored crash report to telemetry and clears it. */
         sendStored: () => Promise<void>;
+      };
+      folder: {
+        /** Opens a native directory picker; resolves to the selected path or null. */
+        pick: () => Promise<string | null>;
+        /** Recursively reads text files under folderPath; resolves to FolderEntry[]. */
+        readFiles: (folderPath: string) => Promise<FolderEntry[]>;
+        /** Creates or overwrites a file at relativePath inside folderPath. */
+        writeFile: (folderPath: string, relativePath: string, content: string) => Promise<void>;
+        /** Deletes a file or directory (recursively) at relativePath inside folderPath. */
+        deleteEntry: (folderPath: string, relativePath: string) => Promise<void>;
       };
     };
     /**

@@ -31,6 +31,7 @@ import { streamAnthropic } from './providers/anthropic';
 import { streamOpenAI } from './providers/openai';
 import { streamLmStudio } from './providers/lmstudio';
 import { callWebTool, BUILTIN_SERVER_ID } from './webtools';
+import { callFileTool, FILE_SERVER_ID, FILE_TOOL_DEFS } from './filetools';
 import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { evaluateRouting } from './routing';
@@ -709,6 +710,39 @@ export function registerIpcHandlers(): void {
         let messages: Message[] = [...request.messages].filter(
           (m) => m.role !== 'assistant' || !!(m.content || m.toolCalls?.length),
         );
+
+        // Inject folder context into the last user message.
+        // Agent mode (rootPath set):  directory listing only — AI uses file tools for content.
+        // Read-only mode (no rootPath): inline all file contents upfront.
+        if (request.folderContext && request.folderContext.files.length > 0) {
+          const fc = request.folderContext;
+          const lastUserIdx = messages.reduce<number>(
+            (found, m, i) => (m.role === 'user' ? i : found), -1,
+          );
+          if (lastUserIdx >= 0) {
+            let contextBlock: string;
+            if (fc.rootPath) {
+              // Agent mode: only a file listing — the AI will read files on demand
+              const dirListing = fc.files.map((f) => f.relativePath).join('\n');
+              contextBlock = `[Project: ${fc.rootName}]\nFiles:\n${dirListing}\n\n---\n`;
+            } else {
+              // Read-only mode: inline all file contents
+              const filesBlock = fc.files
+                .map((f) => `<file path="${f.relativePath}">\n${f.content}\n</file>`)
+                .join('\n');
+              contextBlock = `[Folder: ${fc.rootName}]\n${filesBlock}\n\n---\n`;
+            }
+            messages = messages.map((m, i) =>
+              i === lastUserIdx ? { ...m, content: contextBlock + m.content } : m,
+            );
+          }
+        }
+
+        // Build effective system prompt — agent mode prepends file-tool instructions.
+        const effectiveSystemPrompt = request.folderContext?.rootPath
+          ? `You are in agent mode. Project root: ${request.folderContext.rootPath}\nUse file_read, file_write, file_delete, and file_list to interact with files. Always read a file before assuming its contents.${systemPrompt ? `\n\n${systemPrompt}` : ''}`
+          : systemPrompt;
+
         const MAX_ITERATIONS = 10;
 
         // Auto-connect any enabled MCP servers that aren't connected yet
@@ -733,19 +767,23 @@ export function registerIpcHandlers(): void {
             enabledMcpServerIds.length > 0 ? await listAllTools(enabledMcpServerIds) : [];
           // Append built-in tools injected by first-party extensions (web_fetch, web_search)
           tools.push(...(request.builtinTools ?? []));
+          // Inject file tools when a folder with a rootPath is attached
+          if (request.folderContext?.rootPath) {
+            tools.push(...FILE_TOOL_DEFS);
+          }
 
           const getStream = () => {
             switch (provider.type) {
               case 'anthropic':
-                return streamAnthropic(provider, messages, model, parameters, systemPrompt, tools);
+                return streamAnthropic(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'openai':
-                return streamOpenAI(provider, messages, model, parameters, systemPrompt, tools);
+                return streamOpenAI(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'lmstudio':
-                return streamLmStudio(provider, messages, model, parameters, systemPrompt, tools);
+                return streamLmStudio(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'ollama':
-                return streamOllama(provider, messages, model, parameters, systemPrompt, tools);
+                return streamOllama(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'gemini':
-                return streamGemini(provider, messages, model, parameters, systemPrompt, tools);
+                return streamGemini(provider, messages, model, parameters, effectiveSystemPrompt, tools);
             }
           };
 
@@ -840,6 +878,24 @@ export function registerIpcHandlers(): void {
               processedCalls.push({
                 ...tc,
                 serverId: BUILTIN_SERVER_ID,
+                approved: true,
+                result: result.result,
+                isError: result.isError,
+                pending: false,
+                durationMs,
+              });
+              continue;
+            }
+
+            // Route file tools (file_read, file_write, …) to the local handler
+            if (serverId === FILE_SERVER_ID) {
+              const rootPath = request.folderContext?.rootPath ?? '';
+              const t0 = performance.now();
+              const result = await callFileTool(tc, rootPath);
+              const durationMs = Math.round(performance.now() - t0);
+              processedCalls.push({
+                ...tc,
+                serverId: FILE_SERVER_ID,
                 approved: true,
                 result: result.result,
                 isError: result.isError,
@@ -977,6 +1033,91 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('log:open', async (): Promise<void> => {
     await fs.mkdir(logsDir, { recursive: true });
     await shell.openPath(logsDir);
+  });
+
+  // ─── Folder access ───────────────────────────────────────────────────────
+
+  ipcMain.handle('folder:pick', async (): Promise<string | null> => {
+    const win = BrowserWindow.getFocusedWindow();
+    const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  const SKIP_DIRS = new Set(['.git', 'node_modules', '.next', 'dist', 'build', 'out', '.cache',
+    '__pycache__', '.venv', 'venv', '.svelte-kit', '.turbo', '.vercel']);
+  const TEXT_EXTS = new Set([
+    '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.md', '.txt', '.css', '.scss',
+    '.sass', '.less', '.html', '.htm', '.xml', '.yaml', '.yml', '.toml', '.ini', '.env',
+    '.sh', '.bash', '.zsh', '.fish', '.py', '.rb', '.go', '.rs', '.java', '.kt', '.swift',
+    '.c', '.cpp', '.cc', '.h', '.hpp', '.cs', '.vue', '.svelte', '.astro', '.sql',
+    '.graphql', '.gql', '.prisma', '.proto', '.tf', '.hcl', '.lua', '.r',
+  ]);
+  const MAX_FOLDER_FILES = 100;
+  const MAX_FILE_BYTES = 128 * 1024;   // 128 KB per file
+  const MAX_TOTAL_BYTES = 1024 * 1024; // 1 MB total
+
+  ipcMain.handle('folder:read-files', async (_e, folderPath: string) => {
+    const entries: { relativePath: string; content: string; size: number }[] = [];
+    let totalBytes = 0;
+
+    async function walk(dir: string): Promise<void> {
+      if (entries.length >= MAX_FOLDER_FILES) return;
+      let items: import('fs').Dirent[];
+      try {
+        items = await fs.readdir(dir, { withFileTypes: true });
+      } catch { return; }
+
+      for (const item of items) {
+        if (entries.length >= MAX_FOLDER_FILES || totalBytes >= MAX_TOTAL_BYTES) break;
+        const full = path.join(dir, item.name);
+        if (item.isDirectory()) {
+          if (!SKIP_DIRS.has(item.name) && !item.name.startsWith('.')) {
+            await walk(full);
+          }
+        } else if (item.isFile()) {
+          const ext = path.extname(item.name).toLowerCase();
+          if (!TEXT_EXTS.has(ext)) continue;
+          let stat: import('fs').Stats;
+          try { stat = await fs.stat(full); } catch { continue; }
+          if (stat.size > MAX_FILE_BYTES || stat.size === 0) continue;
+          try {
+            const content = await fs.readFile(full, 'utf-8');
+            const rel = path.relative(folderPath, full).split(path.sep).join('/');
+            entries.push({ relativePath: rel, content, size: stat.size });
+            totalBytes += stat.size;
+          } catch { /* skip unreadable */ }
+        }
+      }
+    }
+
+    await walk(folderPath);
+    return entries;
+  });
+
+  // ─── Folder write / delete ────────────────────────────────────────────────
+
+  /** Resolves and validates that targetPath is strictly inside baseFolder. */
+  function assertInsideFolder(baseFolder: string, relativePath: string): string {
+    const resolved = path.resolve(baseFolder, relativePath);
+    const base = path.resolve(baseFolder);
+    if (!resolved.startsWith(base + path.sep) && resolved !== base) {
+      throw new Error('Path traversal detected');
+    }
+    return resolved;
+  }
+
+  ipcMain.handle('folder:write-file', async (_e, folderPath: string, relativePath: string, content: string): Promise<void> => {
+    const target = assertInsideFolder(folderPath, relativePath);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, content, 'utf-8');
+  });
+
+  ipcMain.handle('folder:delete-entry', async (_e, folderPath: string, relativePath: string): Promise<void> => {
+    const target = assertInsideFolder(folderPath, relativePath);
+    await fs.rm(target, { recursive: true, force: true });
   });
 
   // ─── Crash report: manual send ───────────────────────────────────────────

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import type {
   AppSettings,
   ChatRequest,
+  FolderEntry,
   McpServerConfig,
   McpTool,
   StreamChunk,
@@ -204,6 +205,21 @@ contextBridge.exposeInMainWorld('api', {
     /** Sends the stored crash report to telemetry and clears it. */
     sendStored: (): Promise<void> =>
       ipcRenderer.invoke('crash:send-stored'),
+  },
+
+  folder: {
+    /** Opens a native directory picker; resolves to the selected path or null. */
+    pick: (): Promise<string | null> =>
+      ipcRenderer.invoke('folder:pick'),
+    /** Recursively reads text files under folderPath; resolves to FolderEntry[]. */
+    readFiles: (folderPath: string): Promise<FolderEntry[]> =>
+      ipcRenderer.invoke('folder:read-files', folderPath),
+    /** Creates or overwrites a file at relativePath inside folderPath. */
+    writeFile: (folderPath: string, relativePath: string, content: string): Promise<void> =>
+      ipcRenderer.invoke('folder:write-file', folderPath, relativePath, content),
+    /** Deletes a file or directory (recursively) at relativePath inside folderPath. */
+    deleteEntry: (folderPath: string, relativePath: string): Promise<void> =>
+      ipcRenderer.invoke('folder:delete-entry', folderPath, relativePath),
   },
 
 });
