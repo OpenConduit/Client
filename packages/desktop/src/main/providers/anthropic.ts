@@ -58,13 +58,26 @@ function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
         result.push({ role: 'assistant' as const, content });
       }
     } else if (m.role === 'tool_result') {
-      // Anthropic requires tool results as a user message with tool_result blocks
-      const toolResultBlocks: Anthropic.ToolResultBlockParam[] = (m.toolCalls ?? []).map((tc) => ({
-        type: 'tool_result' as const,
-        tool_use_id: tc.id,
-        content: typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result ?? ''),
-        is_error: tc.isError,
-      }));
+      // Anthropic requires tool results as a user message with tool_result blocks.
+      // Only include results whose tool_use_id actually appears in the preceding
+      // assistant message — guards against orphaned results when the history is
+      // truncated and the corresponding tool_use block was dropped.
+      const prevMsg = result[result.length - 1];
+      const prevToolUseIds = new Set<string>(
+        prevMsg?.role === 'assistant'
+          ? (prevMsg.content as Anthropic.ContentBlockParam[])
+              .filter((b): b is Anthropic.ToolUseBlockParam => b.type === 'tool_use')
+              .map((b) => b.id)
+          : [],
+      );
+      const toolResultBlocks: Anthropic.ToolResultBlockParam[] = (m.toolCalls ?? [])
+        .filter((tc) => prevToolUseIds.has(tc.id))
+        .map((tc) => ({
+          type: 'tool_result' as const,
+          tool_use_id: tc.id,
+          content: typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result ?? ''),
+          is_error: tc.isError,
+        }));
       if (toolResultBlocks.length) {
         result.push({ role: 'user' as const, content: toolResultBlocks });
       }
