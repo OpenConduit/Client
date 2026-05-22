@@ -711,22 +711,38 @@ export function registerIpcHandlers(): void {
           (m) => m.role !== 'assistant' || !!(m.content || m.toolCalls?.length),
         );
 
-        // Prepend folder context to the last user message so all providers get it.
+        // Inject folder context into the last user message.
+        // Agent mode (rootPath set):  directory listing only — AI uses file tools for content.
+        // Read-only mode (no rootPath): inline all file contents upfront.
         if (request.folderContext && request.folderContext.files.length > 0) {
           const fc = request.folderContext;
-          const filesBlock = fc.files
-            .map((f) => `<file path="${f.relativePath}">\n${f.content}\n</file>`)
-            .join('\n');
-          const contextBlock = `[Folder: ${fc.rootName}]\n${filesBlock}\n\n---\n`;
           const lastUserIdx = messages.reduce<number>(
             (found, m, i) => (m.role === 'user' ? i : found), -1,
           );
           if (lastUserIdx >= 0) {
+            let contextBlock: string;
+            if (fc.rootPath) {
+              // Agent mode: only a file listing — the AI will read files on demand
+              const dirListing = fc.files.map((f) => f.relativePath).join('\n');
+              contextBlock = `[Project: ${fc.rootName}]\nFiles:\n${dirListing}\n\n---\n`;
+            } else {
+              // Read-only mode: inline all file contents
+              const filesBlock = fc.files
+                .map((f) => `<file path="${f.relativePath}">\n${f.content}\n</file>`)
+                .join('\n');
+              contextBlock = `[Folder: ${fc.rootName}]\n${filesBlock}\n\n---\n`;
+            }
             messages = messages.map((m, i) =>
               i === lastUserIdx ? { ...m, content: contextBlock + m.content } : m,
             );
           }
         }
+
+        // Build effective system prompt — agent mode prepends file-tool instructions.
+        const effectiveSystemPrompt = request.folderContext?.rootPath
+          ? `You are in agent mode. Project root: ${request.folderContext.rootPath}\nUse file_read, file_write, file_delete, and file_list to interact with files. Always read a file before assuming its contents.${systemPrompt ? `\n\n${systemPrompt}` : ''}`
+          : systemPrompt;
+
         const MAX_ITERATIONS = 10;
 
         // Auto-connect any enabled MCP servers that aren't connected yet
@@ -759,15 +775,15 @@ export function registerIpcHandlers(): void {
           const getStream = () => {
             switch (provider.type) {
               case 'anthropic':
-                return streamAnthropic(provider, messages, model, parameters, systemPrompt, tools);
+                return streamAnthropic(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'openai':
-                return streamOpenAI(provider, messages, model, parameters, systemPrompt, tools);
+                return streamOpenAI(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'lmstudio':
-                return streamLmStudio(provider, messages, model, parameters, systemPrompt, tools);
+                return streamLmStudio(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'ollama':
-                return streamOllama(provider, messages, model, parameters, systemPrompt, tools);
+                return streamOllama(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'gemini':
-                return streamGemini(provider, messages, model, parameters, systemPrompt, tools);
+                return streamGemini(provider, messages, model, parameters, effectiveSystemPrompt, tools);
             }
           };
 
