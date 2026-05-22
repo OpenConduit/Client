@@ -709,6 +709,23 @@ export function registerIpcHandlers(): void {
         let messages: Message[] = [...request.messages].filter(
           (m) => m.role !== 'assistant' || !!(m.content || m.toolCalls?.length),
         );
+
+        // Prepend folder context to the last user message so all providers get it.
+        if (request.folderContext && request.folderContext.files.length > 0) {
+          const fc = request.folderContext;
+          const filesBlock = fc.files
+            .map((f) => `<file path="${f.relativePath}">\n${f.content}\n</file>`)
+            .join('\n');
+          const contextBlock = `[Folder: ${fc.rootName}]\n${filesBlock}\n\n---\n`;
+          const lastUserIdx = messages.reduce<number>(
+            (found, m, i) => (m.role === 'user' ? i : found), -1,
+          );
+          if (lastUserIdx >= 0) {
+            messages = messages.map((m, i) =>
+              i === lastUserIdx ? { ...m, content: contextBlock + m.content } : m,
+            );
+          }
+        }
         const MAX_ITERATIONS = 10;
 
         // Auto-connect any enabled MCP servers that aren't connected yet
@@ -977,6 +994,68 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('log:open', async (): Promise<void> => {
     await fs.mkdir(logsDir, { recursive: true });
     await shell.openPath(logsDir);
+  });
+
+  // ─── Folder access ───────────────────────────────────────────────────────
+
+  ipcMain.handle('folder:pick', async (): Promise<string | null> => {
+    const win = BrowserWindow.getFocusedWindow();
+    const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  const SKIP_DIRS = new Set(['.git', 'node_modules', '.next', 'dist', 'build', 'out', '.cache',
+    '__pycache__', '.venv', 'venv', '.svelte-kit', '.turbo', '.vercel']);
+  const TEXT_EXTS = new Set([
+    '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.md', '.txt', '.css', '.scss',
+    '.sass', '.less', '.html', '.htm', '.xml', '.yaml', '.yml', '.toml', '.ini', '.env',
+    '.sh', '.bash', '.zsh', '.fish', '.py', '.rb', '.go', '.rs', '.java', '.kt', '.swift',
+    '.c', '.cpp', '.cc', '.h', '.hpp', '.cs', '.vue', '.svelte', '.astro', '.sql',
+    '.graphql', '.gql', '.prisma', '.proto', '.tf', '.hcl', '.lua', '.r',
+  ]);
+  const MAX_FOLDER_FILES = 100;
+  const MAX_FILE_BYTES = 128 * 1024;   // 128 KB per file
+  const MAX_TOTAL_BYTES = 1024 * 1024; // 1 MB total
+
+  ipcMain.handle('folder:read-files', async (_e, folderPath: string) => {
+    const entries: { relativePath: string; content: string; size: number }[] = [];
+    let totalBytes = 0;
+
+    async function walk(dir: string): Promise<void> {
+      if (entries.length >= MAX_FOLDER_FILES) return;
+      let items: import('fs').Dirent[];
+      try {
+        items = await fs.readdir(dir, { withFileTypes: true });
+      } catch { return; }
+
+      for (const item of items) {
+        if (entries.length >= MAX_FOLDER_FILES || totalBytes >= MAX_TOTAL_BYTES) break;
+        const full = path.join(dir, item.name);
+        if (item.isDirectory()) {
+          if (!SKIP_DIRS.has(item.name) && !item.name.startsWith('.')) {
+            await walk(full);
+          }
+        } else if (item.isFile()) {
+          const ext = path.extname(item.name).toLowerCase();
+          if (!TEXT_EXTS.has(ext)) continue;
+          let stat: import('fs').Stats;
+          try { stat = await fs.stat(full); } catch { continue; }
+          if (stat.size > MAX_FILE_BYTES || stat.size === 0) continue;
+          try {
+            const content = await fs.readFile(full, 'utf-8');
+            const rel = path.relative(folderPath, full).split(path.sep).join('/');
+            entries.push({ relativePath: rel, content, size: stat.size });
+            totalBytes += stat.size;
+          } catch { /* skip unreadable */ }
+        }
+      }
+    }
+
+    await walk(folderPath);
+    return entries;
   });
 
   // ─── Crash report: manual send ───────────────────────────────────────────
