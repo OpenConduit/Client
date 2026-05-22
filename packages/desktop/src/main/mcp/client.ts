@@ -2,7 +2,56 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { readdirSync } from 'fs';
 import { McpServerConfig, McpTool, McpToolResult } from '../../shared/types';
+
+/**
+ * Builds an augmented PATH string that includes directories commonly absent
+ * in packaged Electron apps (which do not inherit the user's shell PATH).
+ * Node.js's child_process.spawn uses env.PATH to resolve commands, so passing
+ * this in the env is sufficient — no need to resolve absolute paths manually.
+ */
+function buildEnhancedPath(): string {
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const existing = process.env.PATH ?? '';
+
+  let extras: string[];
+  if (process.platform === 'win32') {
+    extras = [
+      'C:\\Program Files\\nodejs',
+      'C:\\Program Files (x86)\\nodejs',
+      process.env.APPDATA ? `${process.env.APPDATA}\\npm` : '',
+      process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs\\nodejs` : '',
+    ];
+  } else {
+    const home = process.env.HOME ?? '';
+    extras = [
+      '/usr/local/bin',
+      '/opt/homebrew/bin',
+      '/opt/homebrew/sbin',
+      '/usr/bin',
+      '/bin',
+      '/usr/sbin',
+      '/sbin',
+      home ? `${home}/.local/bin` : '',
+      home ? `${home}/.npm-global/bin` : '',
+      // NVM_BIN is set by nvm when a version is active; fall back to enumerating
+      process.env.NVM_BIN ?? '',
+    ];
+
+    // Enumerate ~/.nvm/versions/node/*/bin for nvm installs where NVM_BIN isn't set
+    if (home && !process.env.NVM_BIN) {
+      const nvmVersionsDir = `${process.env.NVM_DIR ?? `${home}/.nvm`}/versions/node`;
+      try {
+        const versions = readdirSync(nvmVersionsDir).reverse().slice(0, 3);
+        for (const v of versions) extras.push(`${nvmVersionsDir}/${v}/bin`);
+      } catch { /* nvm not installed */ }
+    }
+  }
+
+  const parts = [...extras, ...existing.split(sep)].filter(Boolean);
+  return [...new Set(parts)].join(sep);
+}
 
 interface McpClientEntry {
   client: Client;
@@ -35,7 +84,7 @@ export async function connectMcpServer(config: McpServerConfig): Promise<void> {
     transport = new StdioClientTransport({
       command: config.command,
       args: config.args ?? [],
-      env: { ...process.env, ...config.env },
+      env: { ...process.env, PATH: buildEnhancedPath(), ...config.env },
     });
   }
 
