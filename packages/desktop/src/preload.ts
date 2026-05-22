@@ -214,6 +214,12 @@ contextBridge.exposeInMainWorld('api', {
     /** Recursively reads text files under folderPath; resolves to FolderEntry[]. */
     readFiles: (folderPath: string): Promise<FolderEntry[]> =>
       ipcRenderer.invoke('folder:read-files', folderPath),
+    /** Creates or overwrites a file at relativePath inside folderPath. */
+    writeFile: (folderPath: string, relativePath: string, content: string): Promise<void> =>
+      ipcRenderer.invoke('folder:write-file', folderPath, relativePath, content),
+    /** Deletes a file or directory (recursively) at relativePath inside folderPath. */
+    deleteEntry: (folderPath: string, relativePath: string): Promise<void> =>
+      ipcRenderer.invoke('folder:delete-entry', folderPath, relativePath),
   },
 
 });

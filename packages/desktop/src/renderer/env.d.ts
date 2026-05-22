@@ -114,6 +114,10 @@ declare global {
         pick: () => Promise<string | null>;
         /** Recursively reads text files under folderPath; resolves to FolderEntry[]. */
         readFiles: (folderPath: string) => Promise<FolderEntry[]>;
+        /** Creates or overwrites a file at relativePath inside folderPath. */
+        writeFile: (folderPath: string, relativePath: string, content: string) => Promise<void>;
+        /** Deletes a file or directory (recursively) at relativePath inside folderPath. */
+        deleteEntry: (folderPath: string, relativePath: string) => Promise<void>;
       };
     };
     /**

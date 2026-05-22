@@ -1058,6 +1058,29 @@ export function registerIpcHandlers(): void {
     return entries;
   });
 
+  // ─── Folder write / delete ────────────────────────────────────────────────
+
+  /** Resolves and validates that targetPath is strictly inside baseFolder. */
+  function assertInsideFolder(baseFolder: string, relativePath: string): string {
+    const resolved = path.resolve(baseFolder, relativePath);
+    const base = path.resolve(baseFolder);
+    if (!resolved.startsWith(base + path.sep) && resolved !== base) {
+      throw new Error('Path traversal detected');
+    }
+    return resolved;
+  }
+
+  ipcMain.handle('folder:write-file', async (_e, folderPath: string, relativePath: string, content: string): Promise<void> => {
+    const target = assertInsideFolder(folderPath, relativePath);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, content, 'utf-8');
+  });
+
+  ipcMain.handle('folder:delete-entry', async (_e, folderPath: string, relativePath: string): Promise<void> => {
+    const target = assertInsideFolder(folderPath, relativePath);
+    await fs.rm(target, { recursive: true, force: true });
+  });
+
   // ─── Crash report: manual send ───────────────────────────────────────────
   ipcMain.handle('crash:has-stored', (): boolean => {
     return getStoredCrash() !== undefined;
