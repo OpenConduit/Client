@@ -9,11 +9,6 @@ import { destroyBrowserWindow } from './main/webtools/browser';
 
 if (started) app.quit();
 
-// Enable Crashpad crash reporter so minidumps are written to disk for renderer,
-// GPU-process and main-process crashes. Must be called before the first window
-// is created so that renderer processes inherit the reporter configuration.
-crashReporter.start({ submitURL: '', uploadToServer: false });
-
 // Pin userData to a stable name so it never moves when productName changes.
 app.setPath('userData', path.join(app.getPath('appData'), 'openconduit'));
 
@@ -90,6 +85,11 @@ const createWindow = () => {
 };
 
 app.on('ready', () => {
+  // Start Crashpad inside app.on('ready') so the Mach exception handler is
+  // registered after the framework is fully initialised. Calling it before
+  // app.ready on Apple Silicon can conflict with Chromium's own exception
+  // handling and trigger spurious CHECK failures in the renderer.
+  crashReporter.start({ submitURL: '', uploadToServer: false });
   // In production the renderer loads via file://, so absolute paths like
   // /app-icon.png resolve to the filesystem root instead of the bundled asset
   // directory. Intercept those requests and redirect to the correct path.
