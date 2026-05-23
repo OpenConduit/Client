@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import type { McpTool, Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
+import type { McpTool, Message, ModelParameters, ProviderConfig, ReasoningLevel, TokenUsage, ToolCall } from '../../shared/types';
 
 type GeminiContent = {
   role: 'user' | 'model';
@@ -53,6 +53,7 @@ export async function* streamGemini(
   params: ModelParameters,
   systemPrompt: string | undefined,
   tools: McpTool[],
+  reasoning?: ReasoningLevel,
 ): AsyncGenerator<
   | { type: 'delta'; text: string }
   | { type: 'thinking'; text: string }
@@ -66,6 +67,7 @@ export async function* streamGemini(
 
   const contents = toGeminiContents(messages);
   const geminiTools = toGeminiTools(tools);
+  const thinkingBudget: Record<ReasoningLevel, number> = { off: 0, low: 1024, medium: 8192, high: 24576 };
 
   const stream = await ai.models.generateContentStream({
     model,
@@ -76,6 +78,7 @@ export async function* streamGemini(
       topP: params.topP,
       ...(params.maxTokens ? { maxOutputTokens: params.maxTokens } : {}),
       ...(geminiTools.length ? { tools: geminiTools } : {}),
+      ...(reasoning && reasoning !== 'off' ? { thinkingConfig: { thinkingBudget: thinkingBudget[reasoning] } } : {}),
     },
   });
 
@@ -85,11 +88,17 @@ export async function* streamGemini(
     const candidate = chunk.candidates?.[0];
     if (!candidate) continue;
 
-    // Text delta
-    const text = candidate.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
+    // Text delta (non-thinking parts only)
+    const text = candidate.content?.parts
+      ?.filter((p) => !p.thought && p.text)
+      .map((p) => p.text ?? '').join('') ?? '';
     if (text) yield { type: 'delta', text };
 
-    // Thinking (not natively supported by Gemini yet, reserved for future)
+    // Thinking parts (Gemini 2.5 sets p.thought = true)
+    const thinkingText = candidate.content?.parts
+      ?.filter((p) => p.thought && p.text)
+      .map((p) => p.text ?? '').join('') ?? '';
+    if (thinkingText) yield { type: 'thinking', text: thinkingText };
 
     // Function calls
     const fnCalls = candidate.content?.parts?.filter((p) => p.functionCall) ?? [];

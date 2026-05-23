@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import AnthropicFoundry from '@anthropic-ai/foundry-sdk';
-import { McpTool, Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
+import { McpTool, Message, ModelParameters, ProviderConfig, ReasoningLevel, TokenUsage, ToolCall } from '../../shared/types';
 
 function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
   const result: Anthropic.MessageParam[] = [];
@@ -102,6 +102,7 @@ export async function* streamAnthropic(
   params: ModelParameters,
   systemPrompt: string | undefined,
   tools: McpTool[],
+  reasoning?: ReasoningLevel,
 ): AsyncGenerator<
   | { type: 'delta'; text: string }
   | { type: 'thinking'; text: string }
@@ -125,8 +126,11 @@ export async function* streamAnthropic(
 
   // Anthropic does not allow both temperature and top_p simultaneously.
   // Prefer temperature; only send top_p if temperature is not set.
-  const tempParam = params.temperature !== undefined ? { temperature: params.temperature } : {};
-  const topPParam = params.temperature === undefined && params.topP !== undefined ? { top_p: params.topP } : {};
+  // When extended thinking is enabled temperature must be 1 (API requirement).
+  const thinkingBudget: Record<ReasoningLevel, number> = { off: 0, low: 2000, medium: 8000, high: 20000 };
+  const thinkingEnabled = !!reasoning && reasoning !== 'off';
+  const tempParam = thinkingEnabled ? { temperature: 1 } : (params.temperature !== undefined ? { temperature: params.temperature } : {});
+  const topPParam = !thinkingEnabled && params.temperature === undefined && params.topP !== undefined ? { top_p: params.topP } : {};
 
   const streamParams: Anthropic.MessageStreamParams = {
     model,
@@ -136,7 +140,8 @@ export async function* streamAnthropic(
     messages: toAnthropicMessages(messages),
     ...(systemPrompt ? { system: systemPrompt } : {}),
     ...(tools.length ? { tools: toAnthropicTools(tools) } : {}),
-  };
+    ...(thinkingEnabled ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget[reasoning!] } } : {}),
+  } as Anthropic.MessageStreamParams;
 
   const stream = client.messages.stream(streamParams);
 

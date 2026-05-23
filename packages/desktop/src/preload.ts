@@ -1,4 +1,14 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, crashReporter } from 'electron';
+
+// ── Crash breadcrumbs ─────────────────────────────────────────────────────────
+// Intercept every IPC invoke so the last-called channel is written into the
+// Crashpad minidump. This shows up in .dmp files and helps narrow down which
+// operation was in-flight when a renderer V8 CHECK failure occurs.
+const _origInvoke = ipcRenderer.invoke.bind(ipcRenderer);
+ipcRenderer.invoke = (channel: string, ...args: unknown[]): Promise<unknown> => {
+  try { crashReporter.addExtraParameter('lastIpc', channel); } catch { /* non-fatal */ }
+  return _origInvoke(channel, ...args);
+};
 import fs from 'node:fs';
 import type {
   AppSettings,
@@ -105,11 +115,23 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke(IPC.FEEDBACK_SUBMIT, payload),
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
+    /** Subscribe to be notified when an update has started downloading. Returns an unsub fn. */
+    onUpdateDownloading: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('update:downloading', handler);
+      return () => ipcRenderer.removeListener('update:downloading', handler);
+    },
     /** Subscribe to be notified when an update has been downloaded. Returns an unsub fn. */
     onUpdateDownloaded: (cb: () => void): (() => void) => {
       const handler = () => cb();
       ipcRenderer.on('update:downloaded', handler);
       return () => ipcRenderer.removeListener('update:downloaded', handler);
+    },
+    /** Subscribe to be notified when a download error occurs. Returns an unsub fn. */
+    onUpdateError: (cb: (message: string) => void): (() => void) => {
+      const handler = (_: Electron.IpcRendererEvent, message: string) => cb(message);
+      ipcRenderer.on('update:error', handler);
+      return () => ipcRenderer.removeListener('update:error', handler);
     },
     /** Quit and install the downloaded update immediately. */
     restartAndInstall: (): Promise<void> =>
@@ -184,6 +206,29 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('webtool:test', type),
   },
 
+  copilot: {
+    /** Start GitHub device-flow OAuth; returns codes + verification URL to show the user. */
+    startAuth: (): Promise<{
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      expires_in: number;
+      interval: number;
+    }> => ipcRenderer.invoke('copilot:start-auth'),
+    /** Poll for OAuth completion. Call every `interval` seconds until status !== 'pending'. */
+    pollAuth: (deviceCode: string): Promise<{
+      status: 'pending' | 'complete' | 'expired' | 'error';
+      token?: string;
+      error?: string;
+    }> => ipcRenderer.invoke('copilot:poll-auth', deviceCode),
+    /** Fetch Copilot premium-request quota for the authenticated GitHub token. */
+    getUsage: (githubToken: string): Promise<{
+      premiumRequestsUsed: number;
+      premiumRequestsIncluded: number;
+      premiumRequestsPurchased: number;
+    } | null> => ipcRenderer.invoke('copilot:get-usage', githubToken),
+  },
+
   extensionTools: {
     /**
      * Listen for the main process asking the renderer to execute an extension
@@ -208,6 +253,18 @@ contextBridge.exposeInMainWorld('api', {
     /** Sends the stored crash report to telemetry and clears it. */
     sendStored: (): Promise<void> =>
       ipcRenderer.invoke('crash:send-stored'),
+  },
+
+  diagnostics: {
+    /**
+     * Write an arbitrary key/value pair into the Crashpad extra-parameters
+     * table. Values appear in .dmp files and macOS .ips crash reports, making
+     * it easy to see renderer lifecycle state at the time of a V8 crash.
+     * Keys are capped at 40 chars; values at 127 chars by Crashpad.
+     */
+    setParam: (key: string, value: string): void => {
+      try { crashReporter.addExtraParameter(key.slice(0, 40), value.slice(0, 127)); } catch { /* non-fatal */ }
+    },
   },
 
   folder: {
