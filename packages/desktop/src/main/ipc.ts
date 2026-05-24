@@ -19,7 +19,6 @@ import {
   FeedbackPayload,
   RoutingConfig,
   RoutingDecision,
-  SimpleCompletionRequest,
   SyncPayload,
 } from '../shared/types';
 import {
