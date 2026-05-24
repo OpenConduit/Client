@@ -5,6 +5,7 @@ import type {
   FolderEntry,
   McpServerConfig,
   McpTool,
+  SimpleCompletionRequest,
   StreamChunk,
   StreamEnd,
   StreamError,
@@ -23,6 +24,7 @@ declare global {
     api: {
       chat: {
         send: (request: ChatRequest) => Promise<{ messageId: string }>;
+        /** Headless LLM call. Returns full response text without creating conversation messages. */
         complete: (request: SimpleCompletionRequest) => Promise<{ text: string }>;
         abort: (conversationId: string) => void;
         onChunk: (cb: (data: StreamChunk) => void) => UnsubFn;
@@ -52,8 +54,12 @@ declare global {
         checkForUpdates: () => Promise<UpdateInfo>;
         submitFeedback: (payload: Omit<FeedbackPayload, 'appVersion' | 'platform'>) => Promise<void>;
         openExternal: (url: string) => Promise<void>;
+        /** Subscribe to be notified when an update has started downloading. Returns an unsub fn. */
+        onUpdateDownloading: (cb: () => void) => (() => void);
         /** Subscribe to be notified when an update has been downloaded. Returns an unsub fn. */
         onUpdateDownloaded: (cb: () => void) => (() => void);
+        /** Subscribe to be notified when a download error occurs. Returns an unsub fn. */
+        onUpdateError: (cb: (message: string) => void) => (() => void);
         /** Quit and install the downloaded update immediately. */
         restartAndInstall: () => Promise<void>;
         /** Trigger an on-demand Squirrel download; fires update:downloaded when ready. */
@@ -99,11 +105,37 @@ declare global {
         /** Run a quick smoke-test of web_fetch or web_search with current settings. */
         test: (type: 'fetch' | 'search') => Promise<{ ok: boolean; message: string }>;
       };
+      copilot: {
+        /** Start GitHub device-flow OAuth; returns codes + verification URL to show the user. */
+        startAuth: () => Promise<{
+          device_code: string;
+          user_code: string;
+          verification_uri: string;
+          expires_in: number;
+          interval: number;
+        }>;
+        /** Poll for OAuth completion. Call every `interval` seconds until status !== 'pending'. */
+        pollAuth: (deviceCode: string) => Promise<{
+          status: 'pending' | 'complete' | 'expired' | 'error';
+          token?: string;
+          error?: string;
+        }>;
+        /** Fetch Copilot premium-request quota for the authenticated GitHub token. */
+        getUsage: (githubToken: string) => Promise<{
+          premiumRequestsUsed: number;
+          premiumRequestsIncluded: number;
+          premiumRequestsPurchased: number;
+        } | null>;
+      };
       extensionTools: {
         /** Listen for the main process requesting an extension tool call. Returns an unsub fn. */
         onCall: (cb: (data: { callId: string; toolName: string; input: Record<string, unknown> }) => void) => UnsubFn;
         /** Send the result of an extension tool call back to the main process. */
         sendResult: (data: { callId: string; result: string; isError: boolean }) => void;
+      };
+      diagnostics: {
+        /** Write a key/value pair into the Crashpad minidump for crash diagnosis. */
+        setParam: (key: string, value: string) => void;
       };
       crash: {
         /** Returns true if a crash report has been stored and is available to send. */

@@ -111,6 +111,10 @@ export interface StoredCrash {
   timestamp: string;
   /** Path to the Crashpad minidumps directory for this crash. */
   crashDumpsDir?: string;
+  /** render-process-gone reason (e.g. 'crashed', 'killed', 'oom'). */
+  reason?: string;
+  /** Tail of the renderer debug log captured at crash time. */
+  logTail?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

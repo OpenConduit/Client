@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { McpTool, Message, ModelParameters, ProviderConfig, TokenUsage, ToolCall } from '../../shared/types';
+import { McpTool, Message, ModelParameters, ProviderConfig, ReasoningLevel, TokenUsage, ToolCall } from '../../shared/types';
 
 async function pdfToText(base64: string): Promise<string> {
   try {
@@ -82,6 +82,8 @@ export async function* streamOpenAI(
   params: ModelParameters,
   systemPrompt: string | undefined,
   tools: McpTool[],
+  reasoning?: ReasoningLevel,
+  defaultHeaders?: Record<string, string>,
 ): AsyncGenerator<{ type: 'delta'; text: string } | { type: 'thinking'; text: string } | { type: 'tool_calls'; toolCalls: ToolCall[] } | { type: 'usage'; usage: TokenUsage }> {
   // OpenAI doesn't support native PDF — pre-process messages to extract text
   const processedMessages = await Promise.all(
@@ -101,18 +103,24 @@ export async function* streamOpenAI(
   const client = new OpenAI({
     apiKey: config.apiKey ?? 'lm-studio',
     baseURL: config.baseUrl,
+    ...(defaultHeaders ? { defaultHeaders } : {}),
   });
 
-  const stream = await client.chat.completions.create({
+  // o-series models (o1, o3, o4-mini, etc.) use reasoning_effort instead of
+  // temperature/top_p. Detect by model name prefix.
+  const isOSeries = /^o\d/i.test(model);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stream = await (client.chat.completions.create as any)({
     model,
     stream: true,
     stream_options: { include_usage: true },
-    temperature: params.temperature,
-    top_p: params.topP,
+    ...(!isOSeries ? { temperature: params.temperature, top_p: params.topP } : {}),
     max_completion_tokens: params.maxTokens,
     messages: toOpenAIMessages(processedMessages, systemPrompt),
     ...(tools.length ? { tools: toOpenAITools(tools), tool_choice: 'auto' } : {}),
-  });
+    ...(isOSeries && reasoning && reasoning !== 'off' ? { reasoning_effort: reasoning } : {}),
+  }) as AsyncIterable<OpenAI.Chat.ChatCompletionChunk>;
 
   const accumulatedToolCalls: Map<number, { id: string; name: string; args: string }> = new Map();
   let usageData: TokenUsage | null = null;

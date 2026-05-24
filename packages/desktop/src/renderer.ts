@@ -7,9 +7,16 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '@openconduit/core/App';
 
+// ── Renderer lifecycle markers ───────────────────────────────────────────────
+// Each call writes a key into the Crashpad extra-parameters table so the
+// renderer's progress is visible in .dmp / .ips files if V8 crashes.
+window.api.diagnostics.setParam('rendererState', 'preInit');
+
 // Wire the Electron IPC bridge to the AppService interface.
 // This must run before React renders so stores can access the service.
 initService(window.api as AppService);
+
+window.api.diagnostics.setParam('rendererState', 'serviceReady');
 
 // Forward main-process log entries to the in-app debug console panel.
 window.api.log.onConsoleEntry((entry) => {
@@ -93,6 +100,7 @@ class AppErrorBoundary extends React.Component<
   }
 }
 
+window.api.diagnostics.setParam('rendererState', 'reactMount');
 createRoot(document.getElementById('root')!).render(
   React.createElement(
     React.StrictMode,

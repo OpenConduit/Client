@@ -68,7 +68,11 @@ const createWindow = () => {
 
     const err = new Error(`Renderer process gone (${details.reason}, exit ${details.exitCode})`);
     err.name = 'RendererCrash';
-    void fireTelemetryCrash(err, { crashDumpsDir: app.getPath('crashDumps') });
+    void fireTelemetryCrash(err, {
+      crashDumpsDir: app.getPath('crashDumps'),
+      reason: details.reason,
+      exitCode: details.exitCode,
+    });
 
     setTimeout(() => {
       if (mainWindow.isDestroyed()) return;
@@ -89,7 +93,20 @@ app.on('ready', () => {
   // registered after the framework is fully initialised. Calling it before
   // app.ready on Apple Silicon can conflict with Chromium's own exception
   // handling and trigger spurious CHECK failures in the renderer.
-  crashReporter.start({ submitURL: '', uploadToServer: false });
+  crashReporter.start({
+    submitURL: '',
+    uploadToServer: false,
+    // Embed build/env info in every minidump so crash reports are self-contained
+    // even when the .dmp is inspected offline without a symbol server.
+    globalExtra: {
+      appVersion: app.getVersion(),
+      platform:   process.platform,
+      arch:       process.arch,
+      electronV:  process.versions.electron,
+      nodeV:      process.versions.node,
+      v8V:        process.versions.v8,
+    },
+  });
   // In production the renderer loads via file://, so absolute paths like
   // /app-icon.png resolve to the filesystem root instead of the bundled asset
   // directory. Intercept those requests and redirect to the correct path.
@@ -145,13 +162,18 @@ app.on('ready', () => {
       });
 
       // For download-only mode, broadcast the 'update:downloaded' event so the
-      // Updates tab can show the "Restart & Install" banner.
+      // Updates tab can show the "Restart & Install" banner. Also broadcast
+      // 'update:downloading' when Squirrel starts the download so the progress
+      // bar appears if Settings is open.
       if (updateMode === 'download-only') {
-        autoUpdater.once('update-downloaded', () => {
+        const broadcast = (channel: string) => {
           for (const win of BrowserWindow.getAllWindows()) {
-            win.webContents.send('update:downloaded');
+            win.webContents.send(channel);
           }
-        });
+        };
+        autoUpdater.once('update-available', () => broadcast('update:downloading'));
+        autoUpdater.once('update-downloaded', () => broadcast('update:downloaded'));
+        autoUpdater.once('error', () => { /* silent for background downloads */ });
       }
     })();
   }

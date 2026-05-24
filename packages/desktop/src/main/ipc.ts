@@ -19,6 +19,7 @@ import {
   FeedbackPayload,
   RoutingConfig,
   RoutingDecision,
+  SimpleCompletionRequest,
 } from '../shared/types';
 import { getSettings, setSettings, settingsStore, storeLastCrash, getStoredCrash, clearStoredCrash } from './store/settings';
 import {
@@ -35,6 +36,8 @@ import { callWebTool, BUILTIN_SERVER_ID } from './webtools';
 import { callFileTool, FILE_SERVER_ID, FILE_TOOL_DEFS } from './filetools';
 import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
+import { streamBedrock } from './providers/bedrock';
+import { streamCopilot, startCopilotAuth, pollCopilotAuth, listCopilotModels, getCopilotUsage } from './providers/copilot';
 import { evaluateRouting } from './routing';
 
 const EXTENSION_SERVER_ID = '__extension__';
@@ -81,10 +84,21 @@ export async function fireTelemetrySessionStart(): Promise<void> {
   });
 }
 
-export async function fireTelemetryCrash(error: Error, extra?: { crashDumpsDir?: string }): Promise<void> {
+export async function fireTelemetryCrash(error: Error, extra?: { crashDumpsDir?: string; reason?: string; exitCode?: number }): Promise<void> {
   // Always persist the crash locally so users can manually send it later
   const sanitize = (s: string) =>
     s.replace(/\(\/[^\s)]+\)/g, '(<path>)').replace(/at \/[^\s]+/g, 'at <path>').slice(0, 3000);
+
+  // Capture the tail of today's debug log for crash context (last 20 lines, 2 KB cap).
+  // The renderer writes rendererState / lastIpc breadcrumbs here before a V8 crash.
+  let logTail = '';
+  try {
+    const logsDir = path.join(app.getPath('userData'), 'logs');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const raw = await fs.readFile(path.join(logsDir, `debug-${dateStr}.log`), 'utf-8');
+    logTail = raw.split('\n').filter(Boolean).slice(-20).join('\n').slice(0, 2000);
+  } catch { /* log not yet written or unavailable */ }
+
   storeLastCrash({
     appVersion: app.getVersion(),
     platform: process.platform,
@@ -94,6 +108,8 @@ export async function fireTelemetryCrash(error: Error, extra?: { crashDumpsDir?:
     stackTrace: sanitize(error.stack ?? ''),
     timestamp: new Date().toISOString(),
     ...(extra?.crashDumpsDir ? { crashDumpsDir: extra.crashDumpsDir } : {}),
+    ...(extra?.reason ? { reason: extra.reason } : {}),
+    ...(logTail ? { logTail } : {}),
   });
 
   if (!app.isPackaged) return; // never auto-send telemetry in dev
@@ -107,7 +123,13 @@ export async function fireTelemetryCrash(error: Error, extra?: { crashDumpsDir?:
     errorType: error.name,
     errorMessage: error.message.replace(/(?:\/[\w.-]+){2,}/g, '<path>').slice(0, 300),
     stackTrace: sanitize(error.stack ?? ''),
+    ...(extra?.reason ? { reason: extra.reason } : {}),
+    ...(extra?.exitCode !== undefined ? { exitCode: extra.exitCode } : {}),
+    ...(logTail ? { logTail } : {}),
   });
+  // Clear the stored copy now that it has been successfully auto-sent,
+  // so the "Unsent crash report" banner doesn't reappear on next launch.
+  clearStoredCrash();
 }
 
 const abortControllers = new Map<string, AbortController>();
@@ -276,6 +298,17 @@ export function registerIpcHandlers(): void {
         }
       } catch { /* fall through */ }
       return Array.from(new Set([...defaults, ...custom])).sort();
+    }
+
+    if (provider.type === 'copilot') {
+      const custom = provider.customModels ?? [];
+      if (!provider.apiKey) return custom;
+      try {
+        const fetched = await listCopilotModels(provider.apiKey);
+        return Array.from(new Set([...fetched, ...custom])).sort();
+      } catch {
+        return custom;
+      }
     }
 
     return provider.customModels ?? [];
@@ -666,12 +699,16 @@ export function registerIpcHandlers(): void {
 
     autoUpdater.setFeedURL({ url: `${baseUrl}/${probe}` });
 
-    // Notify the renderer once so the "Restart & Install" banner appears.
-    autoUpdater.once('update-downloaded', () => {
+    const broadcast = (channel: string, ...args: unknown[]) => {
       for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send('update:downloaded');
+        win.webContents.send(channel, ...args);
       }
-    });
+    };
+
+    // Squirrel's 'update-available' fires as soon as the download starts.
+    autoUpdater.once('update-available', () => broadcast('update:downloading'));
+    autoUpdater.once('update-downloaded', () => broadcast('update:downloaded'));
+    autoUpdater.once('error', (err: Error) => broadcast('update:error', err?.message ?? 'Unknown error'));
 
     autoUpdater.checkForUpdates();
   });
@@ -726,9 +763,69 @@ export function registerIpcHandlers(): void {
     return { text: fullText };
   });
 
+  // ─── GitHub Copilot Auth ─────────────────────────────────────────────────
+  ipcMain.handle('copilot:start-auth', () => startCopilotAuth());
+  ipcMain.handle('copilot:poll-auth', (_e, deviceCode: string) => pollCopilotAuth(deviceCode));
+  ipcMain.handle('copilot:get-usage', (_e, githubToken: string) => getCopilotUsage(githubToken));
+
   // ─── Abort ───────────────────────────────────────────────────────────────
   ipcMain.on(IPC.CHAT_ABORT, (_e, conversationId: string) => {
     abortControllers.get(conversationId)?.abort();
+  });
+
+  // ─── Headless completion (pipeline steps, background processing) ───────────
+  ipcMain.handle(IPC.CHAT_COMPLETE, async (_e, request: SimpleCompletionRequest) => {
+    const settings = getSettings();
+    const provider = settings.providers.find((p) => p.id === request.providerId);
+    if (!provider) {
+      throw new Error(`Provider "${request.providerId}" not found.`);
+    }
+
+    // Convert the simple message array to the Message shape providers expect
+    const messages: Message[] = request.messages.map((m, i) => ({
+      id: `complete-${i}`,
+      role: m.role,
+      content: m.content,
+      timestamp: Date.now(),
+      isStreaming: false,
+    }));
+
+    const model = request.model;
+    const parameters = {
+      temperature: 0.7,
+      maxTokens: 4096,
+      ...request.parameters,
+    };
+    const systemPrompt = request.systemPrompt ?? '';
+
+    const getStream = () => {
+      switch (provider.type) {
+        case 'anthropic':
+          return streamAnthropic(provider, messages, model, parameters, systemPrompt, [], undefined);
+        case 'openai':
+          return streamOpenAI(provider, messages, model, parameters, systemPrompt, [], undefined);
+        case 'lmstudio':
+          return streamLmStudio(provider, messages, model, parameters, systemPrompt, []);
+        case 'ollama':
+          return streamOllama(provider, messages, model, parameters, systemPrompt, []);
+        case 'gemini':
+          return streamGemini(provider, messages, model, parameters, systemPrompt, [], undefined);
+        case 'bedrock':
+          return streamBedrock(provider, messages, model, parameters, systemPrompt, []);
+        case 'copilot':
+          return streamCopilot(provider, messages, model, parameters, systemPrompt, [], undefined);
+        default:
+          throw new Error(`Provider type "${provider.type}" is not supported for completions.`);
+      }
+    };
+
+    let fullText = '';
+    for await (const event of getStream()) {
+      if (event.type === 'delta') {
+        fullText += event.text;
+      }
+    }
+    return { text: fullText };
   });
 
   // ─── Chat Send ───────────────────────────────────────────────────────────
@@ -736,6 +833,7 @@ export function registerIpcHandlers(): void {
     const wc = e.sender;
     const { conversationId, providerId, model, parameters, systemPrompt, enabledMcpServerIds } =
       request;
+    const reasoning = request.reasoning;
     const messageId = request.messageId ?? uuidv4();
     const abort = new AbortController();
     abortControllers.set(conversationId, abort);
@@ -826,15 +924,19 @@ export function registerIpcHandlers(): void {
           const getStream = () => {
             switch (provider.type) {
               case 'anthropic':
-                return streamAnthropic(provider, messages, model, parameters, effectiveSystemPrompt, tools);
+                return streamAnthropic(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
               case 'openai':
-                return streamOpenAI(provider, messages, model, parameters, effectiveSystemPrompt, tools);
+                return streamOpenAI(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
               case 'lmstudio':
                 return streamLmStudio(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'ollama':
                 return streamOllama(provider, messages, model, parameters, effectiveSystemPrompt, tools);
               case 'gemini':
-                return streamGemini(provider, messages, model, parameters, effectiveSystemPrompt, tools);
+                return streamGemini(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
+              case 'bedrock':
+                return streamBedrock(provider, messages, model, parameters, effectiveSystemPrompt, tools);
+              case 'copilot':
+                return streamCopilot(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
             }
           };
 
@@ -1187,6 +1289,8 @@ export function registerIpcHandlers(): void {
       errorType: crash.errorType,
       errorMessage: crash.errorMessage,
       stackTrace: crash.stackTrace,
+      ...(crash.reason ? { reason: crash.reason } : {}),
+      ...(crash.logTail ? { logTail: crash.logTail } : {}),
     });
     clearStoredCrash();
   });
