@@ -22,6 +22,24 @@ import type { SyncPayload, SyncStatusResult } from '../../shared/types';
 
 const AUTHOR = { name: 'OpenConduit', email: 'sync@openconduit.app' };
 const BRANCH = 'main';
+const README_CONTENT = [
+  '# OpenConduit Sync',
+  '',
+  'This repository is managed by [OpenConduit](https://openconduit.ai).',
+  'It stores a versioned backup of your conversations, personas, prompt templates, and settings.',
+  '',
+  '> **Do not edit files in this repo manually** \u2014 changes will be overwritten on the next sync.',
+  '',
+  '## Contents',
+  '',
+  '| Path | Description |',
+  '|------|-------------|',
+  '| `conversations/` | One JSON file per conversation |',
+  '| `personas.json` | AI personas |',
+  '| `prompts.json` | Prompt templates |',
+  '| `settings.json` | Non-sensitive app settings |',
+  '| `last-sync.txt` | Timestamp of the most recent sync |',
+].join('\n');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -81,28 +99,7 @@ export async function initRepo(dir: string): Promise<void> {
   // Write a README on first init (skip if already exists)
   const readmePath = path.join(dir, 'README.md');
   if (!fs.existsSync(readmePath)) {
-    fs.writeFileSync(
-      readmePath,
-      [
-        '# OpenConduit Sync',
-        '',
-        'This repository is managed by [OpenConduit](https://openconduit.ai).',
-        'It stores a versioned backup of your conversations, personas, prompt templates, and settings.',
-        '',
-        '> **Do not edit files in this repo manually** — changes will be overwritten on the next sync.',
-        '',
-        '## Contents',
-        '',
-        '| Path | Description |',
-        '|------|-------------|',
-        '| `conversations/` | One JSON file per conversation |',
-        '| `personas.json` | AI personas |',
-        '| `prompts.json` | Prompt templates |',
-        '| `settings.json` | Non-sensitive app settings |',
-        '| `last-sync.txt` | Timestamp of the most recent sync |',
-      ].join('\n'),
-      'utf-8',
-    );
+    fs.writeFileSync(readmePath, README_CONTENT, 'utf-8');
   }
 }
 
@@ -165,6 +162,12 @@ export async function writePayload(dir: string, payload: SyncPayload): Promise<v
     new Date().toISOString() + '\n',
     'utf-8',
   );
+
+  // Backfill README if it was somehow missing
+  const readmePath = path.join(dir, 'README.md');
+  if (!fs.existsSync(readmePath)) {
+    fs.writeFileSync(readmePath, README_CONTENT, 'utf-8');
+  }
 }
 
 /** Read the repo working tree back into a `SyncPayload`. */
