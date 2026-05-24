@@ -106,6 +106,9 @@ contextBridge.exposeInMainWorld('api', {
   models: {
     list: (providerId: string): Promise<string[]> =>
       ipcRenderer.invoke(IPC.MODELS_LIST, providerId),
+    /** Ping each local provider (LM Studio, Ollama) and return running status + loaded models. */
+    probe: (): Promise<Record<string, { running: boolean; loadedModels: string[] }>> =>
+      ipcRenderer.invoke('models:local-probe'),
   },
 
   updater: {

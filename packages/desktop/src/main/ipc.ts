@@ -217,17 +217,35 @@ export function registerIpcHandlers(): void {
     const provider = settings.providers.find((p) => p.id === providerId);
     if (!provider) return [];
 
-    if (provider.type === 'openai' || provider.type === 'lmstudio') {
+    if (provider.type === 'openai') {
       try {
         const OpenAI = (await import('openai')).default;
-        const lmBaseUrl =
-          provider.type === 'lmstudio'
-            ? (provider.baseUrl ?? 'http://localhost:1234').replace(/\/v1\/?$/, '') + '/v1'
-            : provider.baseUrl;
-        const client = new OpenAI({
-          apiKey: provider.apiKey ?? 'lm-studio',
-          baseURL: lmBaseUrl,
-        });
+        const client = new OpenAI({ apiKey: provider.apiKey ?? '', baseURL: provider.baseUrl });
+        const models = await client.models.list();
+        return models.data.map((m: { id: string }) => m.id).sort();
+      } catch {
+        return [];
+      }
+    }
+
+    if (provider.type === 'lmstudio') {
+      const base = (provider.baseUrl ?? 'http://localhost:1234').replace(/\/v1\/?$/, '');
+      try {
+        // Prefer /api/v0/models — lists ALL downloaded models, not just currently-loaded ones
+        const res = await fetch(`${base}/api/v0/models`, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          const data = await res.json() as { data?: { id: string; type?: string }[] };
+          const models = (data.data ?? [])
+            .filter((m) => !m.type || m.type === 'llm' || m.type === 'vlm')
+            .map((m) => m.id)
+            .sort();
+          if (models.length > 0) return models;
+        }
+      } catch { /* fall through */ }
+      // Fallback: OpenAI-compat /v1/models (only lists loaded models)
+      try {
+        const OpenAI = (await import('openai')).default;
+        const client = new OpenAI({ apiKey: 'lm-studio', baseURL: `${base}/v1` });
         const models = await client.models.list();
         return models.data.map((m: { id: string }) => m.id).sort();
       } catch {
@@ -237,13 +255,11 @@ export function registerIpcHandlers(): void {
 
     if (provider.type === 'ollama') {
       try {
-        const base = normalizeOllamaBaseUrl(provider.baseUrl).replace(/\/v1\/?$/, '');
-        const response = await fetch(`${base}/api/tags`);
-        if (!response.ok) return [];
-        const body = await response.json() as {
-          models?: Array<{ name?: string; details?: { parameter_size?: string } }>;
-        };
-        return (body.models ?? [])
+        const { Ollama } = await import('ollama');
+        const host = normalizeOllamaBaseUrl(provider.baseUrl).replace(/\/v1\/?$/, '');
+        const client = new Ollama({ host });
+        const { models } = await client.list();
+        return models
           .map((m) => {
             const name = m.name?.trim();
             if (!name) return null;
@@ -322,6 +338,43 @@ export function registerIpcHandlers(): void {
     }
 
     return provider.customModels ?? [];
+  });
+
+  // ─── Local provider probe ─────────────────────────────────────────────────
+  // Returns running status + currently-loaded models for each local provider
+  // (LM Studio, Ollama) configured in settings. Keyed by provider ID.
+  ipcMain.handle('models:local-probe', async () => {
+    const settings = getSettings();
+    const results: Record<string, { running: boolean; loadedModels: string[] }> = {};
+
+    for (const provider of settings.providers) {
+      if (provider.type === 'lmstudio') {
+        const base = (provider.baseUrl ?? 'http://localhost:1234').replace(/\/v1\/?$/, '');
+        try {
+          const res = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(2000) });
+          if (res.ok) {
+            const data = await res.json() as { data?: { id: string }[] };
+            results[provider.id] = { running: true, loadedModels: (data.data ?? []).map((m) => m.id) };
+          } else {
+            results[provider.id] = { running: false, loadedModels: [] };
+          }
+        } catch {
+          results[provider.id] = { running: false, loadedModels: [] };
+        }
+      } else if (provider.type === 'ollama') {
+        try {
+          const { Ollama } = await import('ollama');
+          const host = normalizeOllamaBaseUrl(provider.baseUrl).replace(/\/v1\/?$/, '');
+          const client = new Ollama({ host });
+          const { models } = await client.ps();
+          results[provider.id] = { running: true, loadedModels: models.map((m) => m.name) };
+        } catch {
+          results[provider.id] = { running: false, loadedModels: [] };
+        }
+      }
+    }
+
+    return results;
   });
 
   ipcMain.handle(IPC.OPEN_EXTERNAL, async (_e, url: string): Promise<void> => {
@@ -721,56 +774,6 @@ export function registerIpcHandlers(): void {
     autoUpdater.once('error', (err: Error) => broadcast('update:error', err?.message ?? 'Unknown error'));
 
     autoUpdater.checkForUpdates();
-  });
-
-  // ─── Chat Complete (headless, no streaming events) ────────────────────────
-  ipcMain.handle(IPC.CHAT_COMPLETE, async (_e, request: SimpleCompletionRequest) => {
-    const settings = getSettings();
-    const provider = settings.providers.find((p) => p.id === request.providerId);
-    if (!provider) throw new Error(`Provider "${request.providerId}" not found.`);
-
-    const messages: Message[] = request.messages.map((m) => ({
-      id: uuidv4(),
-      role: m.role,
-      content: m.content,
-      timestamp: Date.now(),
-    }));
-
-    // Providers require the conversation to end with a user message.
-    // Append a closing instruction if the last message is from the assistant.
-    if (messages.length > 0 && messages[messages.length - 1].role !== 'user') {
-      messages.push({
-        id: uuidv4(),
-        role: 'user',
-        content: 'Please provide your analysis per your system prompt.',
-        timestamp: Date.now(),
-      });
-    }
-
-    const emptyParams = { temperature: 0.7, maxTokens: 2048, topP: 1 };
-
-    const getStream = () => {
-      switch (provider.type) {
-        case 'anthropic':
-          return streamAnthropic(provider, messages, request.model, emptyParams, request.systemPrompt, []);
-        case 'openai':
-          return streamOpenAI(provider, messages, request.model, emptyParams, request.systemPrompt, []);
-        case 'lmstudio':
-          return streamLmStudio(provider, messages, request.model, emptyParams, request.systemPrompt, []);
-        case 'ollama':
-          return streamOllama(provider, messages, request.model, emptyParams, request.systemPrompt, []);
-        case 'gemini':
-          return streamGemini(provider, messages, request.model, emptyParams, request.systemPrompt, []);
-        default:
-          throw new Error(`Provider type "${provider.type}" is not supported for background calls.`);
-      }
-    };
-
-    let fullText = '';
-    for await (const event of getStream()) {
-      if (event.type === 'delta') fullText += event.text;
-    }
-    return { text: fullText };
   });
 
   // ─── GitHub Copilot Auth ─────────────────────────────────────────────────
