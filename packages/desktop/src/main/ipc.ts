@@ -689,6 +689,17 @@ export function registerIpcHandlers(): void {
       timestamp: Date.now(),
     }));
 
+    // Providers require the conversation to end with a user message.
+    // Append a closing instruction if the last message is from the assistant.
+    if (messages.length > 0 && messages[messages.length - 1].role !== 'user') {
+      messages.push({
+        id: uuidv4(),
+        role: 'user',
+        content: 'Please provide your analysis per your system prompt.',
+        timestamp: Date.now(),
+      });
+    }
+
     const emptyParams = { temperature: 0.7, maxTokens: 2048, topP: 1 };
 
     const getStream = () => {
@@ -703,6 +714,8 @@ export function registerIpcHandlers(): void {
           return streamOllama(provider, messages, request.model, emptyParams, request.systemPrompt, []);
         case 'gemini':
           return streamGemini(provider, messages, request.model, emptyParams, request.systemPrompt, []);
+        default:
+          throw new Error(`Provider type "${provider.type}" is not supported for background calls.`);
       }
     };
 
