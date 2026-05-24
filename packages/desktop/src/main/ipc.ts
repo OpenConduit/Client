@@ -19,8 +19,18 @@ import {
   FeedbackPayload,
   RoutingConfig,
   RoutingDecision,
-  SimpleCompletionRequest,
+  SyncPayload,
 } from '../shared/types';
+import {
+  initRepo,
+  configureRemote,
+  writePayload as syncWritePayload,
+  readPayload as syncReadPayload,
+  commitAll,
+  pushToRemote,
+  pullFromRemote,
+  getRepoStatus,
+} from './sync';
 import { getSettings, setSettings, settingsStore, storeLastCrash, getStoredCrash, clearStoredCrash } from './store/settings';
 import {
   connectMcpServer,
@@ -1293,6 +1303,64 @@ export function registerIpcHandlers(): void {
       ...(crash.logTail ? { logTail: crash.logTail } : {}),
     });
     clearStoredCrash();
+  });
+
+  // ── Git-backed sync ─────────────────────────────────────────────────────────
+
+  /** Initialise (or re-init) the local git repo. */
+  ipcMain.handle(IPC.SYNC_CONFIGURE, async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const settings = getSettings();
+      const dir = settings.syncRepoPath;
+      if (!dir) return { success: false, error: 'syncRepoPath is not set.' };
+      await initRepo(dir);
+      if (settings.syncRemoteUrl) {
+        await configureRemote(dir, settings.syncRemoteUrl);
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  /** Serialise payload → files → commit → push (if remote configured). */
+  ipcMain.handle(IPC.SYNC_PUSH, async (_e, payload: SyncPayload): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const settings = getSettings();
+      const dir = settings.syncRepoPath;
+      if (!dir) return { success: false, error: 'syncRepoPath is not set.' };
+      await syncWritePayload(dir, payload);
+      await commitAll(dir);
+      if (settings.syncRemoteUrl && settings.syncRemoteToken) {
+        await pushToRemote(dir, settings.syncRemoteToken);
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  /** Pull from remote (if configured) then read and return current data files. */
+  ipcMain.handle(IPC.SYNC_PULL, async (): Promise<{ success: boolean; payload?: SyncPayload; error?: string }> => {
+    try {
+      const settings = getSettings();
+      const dir = settings.syncRepoPath;
+      if (!dir) return { success: false, error: 'syncRepoPath is not set.' };
+      if (settings.syncRemoteUrl && settings.syncRemoteToken) {
+        await pullFromRemote(dir, settings.syncRemoteToken);
+      }
+      const payload = syncReadPayload(dir);
+      return { success: true, payload };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  /** Return current repo status. */
+  ipcMain.handle(IPC.SYNC_STATUS, async (): Promise<import('../shared/types').SyncStatusResult> => {
+    const settings = getSettings();
+    const dir = settings.syncRepoPath ?? '';
+    return getRepoStatus(dir);
   });
 }
 
