@@ -20,7 +20,7 @@ import type { SyncPayload, SyncStatusResult } from '../../shared/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const AUTHOR = { name: 'OpenConduit', email: 'sync@openconduit.app' };
+const AUTHOR = { name: 'OpenConduit', email: 'sync@openconduit.ai' };
 const BRANCH = 'main';
 const README_CONTENT = [
   '# OpenConduit Sync',
