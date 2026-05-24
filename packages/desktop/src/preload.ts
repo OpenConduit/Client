@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('api', {
     send: (request: ChatRequest): Promise<{ messageId: string }> =>
       ipcRenderer.invoke(IPC.CHAT_SEND, request),
 
+    complete: (request: import('./shared/types').SimpleCompletionRequest): Promise<{ text: string }> =>
+      ipcRenderer.invoke(IPC.CHAT_COMPLETE, request),
+
     abort: (conversationId: string): void =>
       ipcRenderer.send(IPC.CHAT_ABORT, conversationId),
 
