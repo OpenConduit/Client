@@ -78,6 +78,32 @@ export async function initRepo(dir: string): Promise<void> {
   if (!(await isInitialised(dir))) {
     await init({ fs, dir, defaultBranch: BRANCH });
   }
+  // Write a README on first init (skip if already exists)
+  const readmePath = path.join(dir, 'README.md');
+  if (!fs.existsSync(readmePath)) {
+    fs.writeFileSync(
+      readmePath,
+      [
+        '# OpenConduit Sync',
+        '',
+        'This repository is managed by [OpenConduit](https://openconduit.ai).',
+        'It stores a versioned backup of your conversations, personas, prompt templates, and settings.',
+        '',
+        '> **Do not edit files in this repo manually** — changes will be overwritten on the next sync.',
+        '',
+        '## Contents',
+        '',
+        '| Path | Description |',
+        '|------|-------------|',
+        '| `conversations/` | One JSON file per conversation |',
+        '| `personas.json` | AI personas |',
+        '| `prompts.json` | Prompt templates |',
+        '| `settings.json` | Non-sensitive app settings |',
+        '| `last-sync.txt` | Timestamp of the most recent sync |',
+      ].join('\n'),
+      'utf-8',
+    );
+  }
 }
 
 /**
@@ -132,6 +158,13 @@ export async function writePayload(dir: string, payload: SyncPayload): Promise<v
   if (payload.settings !== undefined) {
     writeJson(path.join(dir, 'settings.json'), payload.settings);
   }
+
+  // Always update the last-sync timestamp
+  fs.writeFileSync(
+    path.join(dir, 'last-sync.txt'),
+    new Date().toISOString() + '\n',
+    'utf-8',
+  );
 }
 
 /** Read the repo working tree back into a `SyncPayload`. */
