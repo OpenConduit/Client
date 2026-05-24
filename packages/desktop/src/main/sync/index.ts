@@ -213,15 +213,29 @@ export async function pullFromRemote(dir: string, token: string): Promise<void> 
   const hasCommits = (await latestCommitTime(dir)) !== null;
 
   if (!hasCommits) {
-    // Fresh repo — fetch and then checkout the remote HEAD
-    await gitFetch({
-      fs,
-      http,
-      dir,
-      remote: 'origin',
-      ref: BRANCH,
-      onAuth: () => ({ username: 'oauth2', password: token }),
-    });
+    // Fresh local repo — fetch first, then only checkout if the remote has commits
+    try {
+      await gitFetch({
+        fs,
+        http,
+        dir,
+        remote: 'origin',
+        ref: BRANCH,
+        onAuth: () => ({ username: 'oauth2', password: token }),
+      });
+    } catch {
+      // Remote is empty or unreachable — nothing to pull, first push will seed it
+      return;
+    }
+
+    // Verify the remote ref actually exists (empty remote = nothing fetched)
+    try {
+      await resolveRef({ fs, dir, ref: `refs/remotes/origin/${BRANCH}` });
+    } catch {
+      // Remote has no commits yet — skip checkout, first push will seed it
+      return;
+    }
+
     await checkout({
       fs,
       dir,
