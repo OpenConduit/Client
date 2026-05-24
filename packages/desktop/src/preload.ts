@@ -282,4 +282,22 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('folder:delete-entry', folderPath, relativePath),
   },
 
+  sync: {
+    /** Initialise (or re-initialise) the local git repo using the path stored in settings. */
+    configure: (): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('sync:configure'),
+    /** Serialise payload to files, commit, and push to remote if configured. */
+    push: (payload: Record<string, unknown>): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('sync:push', payload),
+    /**
+     * Pull latest commits from remote, then return the data files as a payload.
+     * If no remote is configured, reads the current repo state.
+     */
+    pull: (): Promise<{ success: boolean; payload?: Record<string, unknown>; error?: string }> =>
+      ipcRenderer.invoke('sync:pull'),
+    /** Returns current repo status (initialized, remoteConfigured, lastCommitAt). */
+    status: (): Promise<{ initialized: boolean; remoteConfigured: boolean; lastCommitAt: number | null }> =>
+      ipcRenderer.invoke('sync:status'),
+  },
+
 });
