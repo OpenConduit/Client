@@ -49,6 +49,8 @@ declare global {
       };
       models: {
         list: (providerId: string) => Promise<string[]>;
+        /** Ping each local provider (LM Studio, Ollama) and return running status + loaded models. */
+        probe: () => Promise<Record<string, { running: boolean; loadedModels: string[] }>>;
       };
       updater: {
         checkForUpdates: () => Promise<UpdateInfo>;
