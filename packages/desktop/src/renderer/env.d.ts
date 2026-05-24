@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   ChatRequest,
+  SimpleCompletionRequest,
   FolderEntry,
   McpServerConfig,
   McpTool,
@@ -22,6 +23,7 @@ declare global {
     api: {
       chat: {
         send: (request: ChatRequest) => Promise<{ messageId: string }>;
+        complete: (request: SimpleCompletionRequest) => Promise<{ text: string }>;
         abort: (conversationId: string) => void;
         onChunk: (cb: (data: StreamChunk) => void) => UnsubFn;
         onEnd: (cb: (data: StreamEnd) => void) => UnsubFn;
