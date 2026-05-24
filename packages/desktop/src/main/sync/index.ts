@@ -1,6 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import git from 'isomorphic-git';
+import {
+  init,
+  add,
+  commit,
+  push,
+  pull,
+  fetch as gitFetch,
+  checkout,
+  addRemote,
+  deleteRemote,
+  listRemotes,
+  log as gitLog,
+  statusMatrix,
+  resolveRef,
+} from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import type { SyncPayload, SyncStatusResult } from '../../shared/types';
 
@@ -28,7 +42,7 @@ function writeJson(filePath: string, data: unknown) {
 /** Returns true when `dir` is an initialised git repository. */
 async function isInitialised(dir: string): Promise<boolean> {
   try {
-    await git.resolveRef({ fs, dir, ref: 'HEAD' });
+    await resolveRef({ fs, dir, ref: 'HEAD' });
     return true;
   } catch {
     return false;
@@ -38,7 +52,7 @@ async function isInitialised(dir: string): Promise<boolean> {
 /** Returns true when 'origin' remote is configured. */
 async function hasRemote(dir: string): Promise<boolean> {
   try {
-    const remotes = await git.listRemotes({ fs, dir });
+    const remotes = await listRemotes({ fs, dir });
     return remotes.some((r) => r.remote === 'origin');
   } catch {
     return false;
@@ -48,7 +62,7 @@ async function hasRemote(dir: string): Promise<boolean> {
 /** Returns the author date of the most-recent commit on HEAD, or null. */
 async function latestCommitTime(dir: string): Promise<number | null> {
   try {
-    const [entry] = await git.log({ fs, dir, depth: 1 });
+    const [entry] = await gitLog({ fs, dir, depth: 1 });
     if (!entry) return null;
     return (entry.commit.author.timestamp ?? 0) * 1000;
   } catch {
@@ -62,7 +76,7 @@ async function latestCommitTime(dir: string): Promise<number | null> {
 export async function initRepo(dir: string): Promise<void> {
   fs.mkdirSync(dir, { recursive: true });
   if (!(await isInitialised(dir))) {
-    await git.init({ fs, dir, defaultBranch: BRANCH });
+    await init({ fs, dir, defaultBranch: BRANCH });
   }
 }
 
@@ -72,12 +86,12 @@ export async function initRepo(dir: string): Promise<void> {
  */
 export async function configureRemote(dir: string, remoteUrl: string): Promise<void> {
   if (!remoteUrl) return;
-  const remotes = await git.listRemotes({ fs, dir });
+  const remotes = await listRemotes({ fs, dir });
   const existing = remotes.find((r) => r.remote === 'origin');
   if (existing) {
-    await git.deleteRemote({ fs, dir, remote: 'origin' });
+    await deleteRemote({ fs, dir, remote: 'origin' });
   }
-  await git.addRemote({ fs, dir, remote: 'origin', url: remoteUrl });
+  await addRemote({ fs, dir, remote: 'origin', url: remoteUrl });
 }
 
 /**
@@ -160,13 +174,13 @@ export function readPayload(dir: string): SyncPayload {
  * Returns `false` when there is nothing to commit (working tree clean).
  */
 export async function commitAll(dir: string): Promise<boolean> {
-  await git.add({ fs, dir, filepath: '.' });
+  await add({ fs, dir, filepath: '.' });
 
-  const status = await git.statusMatrix({ fs, dir });
+  const status = await statusMatrix({ fs, dir });
   const dirty = status.some(([, head, workdir, stage]) => !(head === 1 && workdir === 1 && stage === 1));
   if (!dirty) return false;
 
-  await git.commit({
+  await commit({
     fs,
     dir,
     author: AUTHOR,
@@ -180,7 +194,7 @@ export async function commitAll(dir: string): Promise<boolean> {
  * Uses `force: true` for last-write-wins semantics.
  */
 export async function pushToRemote(dir: string, token: string): Promise<void> {
-  await git.push({
+  await push({
     fs,
     http,
     dir,
@@ -200,7 +214,7 @@ export async function pullFromRemote(dir: string, token: string): Promise<void> 
 
   if (!hasCommits) {
     // Fresh repo — fetch and then checkout the remote HEAD
-    await git.fetch({
+    await gitFetch({
       fs,
       http,
       dir,
@@ -208,14 +222,14 @@ export async function pullFromRemote(dir: string, token: string): Promise<void> 
       ref: BRANCH,
       onAuth: () => ({ username: 'oauth2', password: token }),
     });
-    await git.checkout({
+    await checkout({
       fs,
       dir,
       ref: `refs/remotes/origin/${BRANCH}`,
       force: true,
     });
   } else {
-    await git.pull({
+    await pull({
       fs,
       http,
       dir,
