@@ -168,6 +168,34 @@ declare global {
         /** Returns current repo status (initialized, remoteConfigured, lastCommitAt). */
         status: () => Promise<{ initialized: boolean; remoteConfigured: boolean; lastCommitAt: number | null }>;
       };
+      conversation: {
+        /** Upload a conversation snapshot to share.openconduit.ai. Returns the id and public URL. */
+        share: (conversation: unknown) => Promise<{ id: string; url: string }>;
+        /** Save conversation as self-contained HTML to a user-chosen file. */
+        exportHtml: (conversation: unknown) => Promise<boolean>;
+        /** List all shares created from this machine. */
+        listShares: () => Promise<import('../main/store/settings').ShareRecord[]>;
+        /** Delete a share from the server and local list. */
+        deleteShare: (id: string) => Promise<void>;
+      };
+      collab: {
+        /** Create a new live room; optionally seed it with an existing conversation. */
+        create: (seed?: unknown) => Promise<{ roomId: string; wsUrl: string; inviteUrl: string }>;
+        /** Connect to a room and send a join event. */
+        join: (roomId: string, name: string, color: string) => Promise<void>;
+        /** Disconnect from the current room. */
+        leave: () => Promise<void>;
+        /** Send a raw ClientEvent to the room. */
+        send: (event: import('../main/collaboration/types').ClientEvent) => Promise<void>;
+        /** Request the send lock (turn-based). */
+        lockRequest: () => Promise<void>;
+        /** Release the send lock. */
+        lockRelease: () => Promise<void>;
+        /** Subscribe to server events pushed from the room. Returns an unsub fn. */
+        onEvent: (cb: (event: import('../main/collaboration/types').ServerEvent) => void) => UnsubFn;
+        /** Subscribe to deep-link join invites (openconduit://join?roomId=…). Returns an unsub fn. */
+        onInvite: (cb: (roomId: string) => void) => UnsubFn;
+      };
     };
     /**
      * Global SDK surface exposed for dynamically-loaded extension bundles.
