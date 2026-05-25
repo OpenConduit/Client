@@ -12,6 +12,28 @@ if (started) app.quit();
 // Pin userData to a stable name so it never moves when productName changes.
 app.setPath('userData', path.join(app.getPath('appData'), 'openconduit'));
 
+// Register openconduit:// as a deep-link protocol (e.g. openconduit://join?roomId=xxx)
+app.setAsDefaultProtocolClient('openconduit');
+
+// Ensure only one instance handles deep links on Windows/Linux.
+// On macOS the OS enforces single-instance and fires 'open-url' instead.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+
+function handleDeepLink(url: string): void {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'join') {
+      const roomId = parsed.searchParams.get('roomId');
+      if (!roomId) return;
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('collab:join-invite', roomId);
+        win.focus();
+      }
+    }
+  } catch { /* malformed URL — ignore */ }
+}
+
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
@@ -189,6 +211,30 @@ process.on('uncaughtException', (err) => { void fireTelemetryCrash(err); });
 process.on('unhandledRejection', (reason) => {
   const err = reason instanceof Error ? reason : new Error(String(reason));
   void fireTelemetryCrash(err);
+});
+
+// macOS: deep link fired while app is already running
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
+// Windows / Linux: second instance was launched with the URL in argv
+app.on('second-instance', (_event, argv) => {
+  const url = argv.find((arg) => arg.startsWith('openconduit://'));
+  if (url) handleDeepLink(url);
+
+  // Bring existing window to front
+  const [win] = BrowserWindow.getAllWindows();
+  if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+});
+
+// macOS: deep link when app is launched cold (URL in process.argv)
+app.on('will-finish-launching', () => {
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url);
+  });
 });
 
 app.on('window-all-closed', () => {

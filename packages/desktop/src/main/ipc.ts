@@ -31,7 +31,7 @@ import {
   pullFromRemote,
   getRepoStatus,
 } from './sync';
-import { getSettings, setSettings, settingsStore, storeLastCrash, getStoredCrash, clearStoredCrash } from './store/settings';
+import { getSettings, setSettings, settingsStore, storeLastCrash, getStoredCrash, clearStoredCrash, getMachineId, addShare, listShares, removeShare, type ShareRecord } from './store/settings';
 import {
   connectMcpServer,
   disconnectMcpServer,
@@ -49,6 +49,13 @@ import { streamGemini } from './providers/gemini';
 import { streamBedrock } from './providers/bedrock';
 import { streamCopilot, startCopilotAuth, pollCopilotAuth, listCopilotModels, getCopilotUsage } from './providers/copilot';
 import { evaluateRouting } from './routing';
+import {
+  createRoom,
+  joinRoom,
+  leaveRoom,
+  sendToRoom,
+} from './collaboration/client';
+import type { ClientEvent } from './collaboration/types';
 
 const EXTENSION_SERVER_ID = '__extension__';
 const TELEMETRY_PRIMARY = 'https://updates.openconduit.ai';
@@ -1364,6 +1371,91 @@ export function registerIpcHandlers(): void {
     const settings = getSettings();
     const dir = settings.syncRepoPath ?? '';
     return getRepoStatus(dir);
+  });
+
+  // ─── Conversation share (V1) ─────────────────────────────────────────────
+
+  const SHARE_BASE = (getSettings().selfHosting?.shareServerUrl?.replace(/\/$/, '') || 'https://share.openconduit.ai');
+
+  ipcMain.handle('conversation:share', async (_e, conversation: unknown): Promise<{ id: string; url: string }> => {
+    const machineId = getMachineId();
+    const conv = conversation as { title?: string; messages?: unknown[] };
+    const title = conv?.title
+      ?? (Array.isArray(conv?.messages) && conv.messages.length > 0
+          ? String((conv.messages[0] as { content?: string })?.content ?? '').slice(0, 60)
+          : 'Untitled conversation');
+
+    const res = await fetch(`${SHARE_BASE}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation, machineId, title }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Share failed (${res.status}): ${text}`);
+    }
+    const data = await res.json() as { id: string; url: string };
+    addShare({ id: data.id, url: data.url, title, createdAt: Date.now() });
+    return { id: data.id, url: data.url };
+  });
+
+  ipcMain.handle('conversation:list-shares', (): ShareRecord[] => listShares());
+
+  ipcMain.handle('conversation:delete-share', async (_e, id: string): Promise<void> => {
+    const machineId = getMachineId();
+    // Best-effort remote delete — don't throw if network fails
+    try {
+      await fetch(`${SHARE_BASE}/share/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-Machine-Id': machineId },
+      });
+    } catch { /* offline — still remove locally */ }
+    removeShare(id);
+  });
+
+  ipcMain.handle('conversation:export-html', async (_e, conversation: unknown): Promise<boolean> => {
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Export conversation as HTML',
+      defaultPath: `conversation-${Date.now()}.html`,
+      filters: [{ name: 'HTML file', extensions: ['html'] }],
+    });
+    if (!filePath) return false;
+
+    // Ask the renderer to generate the HTML (it has the export utility)
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return false;
+    const html = await win.webContents.executeJavaScript(
+      `window.__exportConversationHtml?.(${JSON.stringify(JSON.stringify(conversation))})`,
+    );
+    if (!html) return false;
+    await fs.writeFile(filePath, html, 'utf-8');
+    return true;
+  });
+
+  // ─── Live collaboration (V2) ──────────────────────────────────────────────
+
+  ipcMain.handle('collab:create', async (_e, seed?: unknown): Promise<{ roomId: string; wsUrl: string; inviteUrl: string }> => {
+    return createRoom(seed);
+  });
+
+  ipcMain.handle('collab:join', (_e, roomId: string, name: string, color: string): void => {
+    joinRoom(roomId, name, color);
+  });
+
+  ipcMain.handle('collab:leave', (): void => {
+    leaveRoom();
+  });
+
+  ipcMain.handle('collab:send', (_e, event: ClientEvent): void => {
+    sendToRoom(event);
+  });
+
+  ipcMain.handle('collab:lock-request', (): void => {
+    sendToRoom({ type: 'lock_request' });
+  });
+
+  ipcMain.handle('collab:lock-release', (): void => {
+    sendToRoom({ type: 'lock_release' });
   });
 }
 

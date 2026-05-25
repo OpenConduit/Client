@@ -128,6 +128,46 @@ export function getStoredCrash(): StoredCrash | undefined {
   try { return diagnosticsStore.get('lastCrash') as StoredCrash | undefined; } catch (_e) { return undefined; }
 }
 
+// ─── Machine identity + share records ───────────────────────────────────────
+// A stable UUID generated once per installation, used to associate shared
+// conversations with this machine so they can be listed and deleted later.
+
+export interface ShareRecord {
+  /** The KV id returned by the share worker. */
+  id: string;
+  /** Full public URL of the share. */
+  url: string;
+  /** Short display title (conversation title or first message snippet). */
+  title: string;
+  /** Unix timestamp (ms) when the share was created. */
+  createdAt: number;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sharesStore = new (Store as any)({ name: 'openconduit-shares' });
+
+export function getMachineId(): string {
+  let id = sharesStore.get('machineId') as string | undefined;
+  if (!id) {
+    id = crypto.randomUUID();
+    sharesStore.set('machineId', id);
+  }
+  return id;
+}
+
+export function listShares(): ShareRecord[] {
+  return (sharesStore.get('shares') as ShareRecord[] | undefined) ?? [];
+}
+
+export function addShare(record: ShareRecord): void {
+  const existing = listShares();
+  sharesStore.set('shares', [record, ...existing]);
+}
+
+export function removeShare(id: string): void {
+  sharesStore.set('shares', listShares().filter((s) => s.id !== id));
+}
+
 export function clearStoredCrash(): void {
   try { diagnosticsStore.delete('lastCrash'); } catch (_e) { /* non-fatal */ }
 }

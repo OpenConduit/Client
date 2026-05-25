@@ -303,4 +303,52 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('sync:status'),
   },
 
+  conversation: {
+    /** Upload conversation snapshot to share.openconduit.ai; returns the id and public URL. */
+    share: (conversation: unknown): Promise<{ id: string; url: string }> =>
+      ipcRenderer.invoke('conversation:share', conversation),
+    /** Save conversation as self-contained HTML to a user-chosen file. Returns true on success. */
+    exportHtml: (conversation: unknown): Promise<boolean> =>
+      ipcRenderer.invoke('conversation:export-html', conversation),
+    /** List all shares created from this machine. */
+    listShares: (): Promise<Array<{ id: string; url: string; title: string; createdAt: number }>> =>
+      ipcRenderer.invoke('conversation:list-shares'),
+    /** Delete a share from the server and local list by its id. */
+    deleteShare: (id: string): Promise<void> =>
+      ipcRenderer.invoke('conversation:delete-share', id),
+  },
+
+  collab: {
+    /** Create a new live room; optionally seed it with an existing conversation. */
+    create: (seed?: unknown): Promise<{ roomId: string; wsUrl: string; inviteUrl: string }> =>
+      ipcRenderer.invoke('collab:create', seed),
+    /** Connect to a room and send a join event. */
+    join: (roomId: string, name: string, color: string): Promise<void> =>
+      ipcRenderer.invoke('collab:join', roomId, name, color),
+    /** Disconnect from the current room. */
+    leave: (): Promise<void> =>
+      ipcRenderer.invoke('collab:leave'),
+    /** Send a raw ClientEvent to the room (message_add, stream_*, typing). */
+    send: (event: unknown): Promise<void> =>
+      ipcRenderer.invoke('collab:send', event),
+    /** Request the send lock (turn-based access). */
+    lockRequest: (): Promise<void> =>
+      ipcRenderer.invoke('collab:lock-request'),
+    /** Release the send lock so others can take a turn. */
+    lockRelease: (): Promise<void> =>
+      ipcRenderer.invoke('collab:lock-release'),
+    /** Subscribe to server events pushed from the room. Returns an unsub fn. */
+    onEvent: (cb: (event: unknown) => void): UnsubFn => {
+      const handler = (_: Electron.IpcRendererEvent, event: unknown) => cb(event);
+      ipcRenderer.on('collab:event', handler);
+      return () => ipcRenderer.removeListener('collab:event', handler);
+    },
+    /** Subscribe to deep-link join invites (openconduit://join?roomId=…). Returns an unsub fn. */
+    onInvite: (cb: (roomId: string) => void): UnsubFn => {
+      const handler = (_: Electron.IpcRendererEvent, roomId: string) => cb(roomId);
+      ipcRenderer.on('collab:join-invite', handler);
+      return () => ipcRenderer.removeListener('collab:join-invite', handler);
+    },
+  },
+
 });
