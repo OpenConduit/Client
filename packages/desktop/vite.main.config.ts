@@ -12,13 +12,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       // Optional native modules used by ws / @google/genai — not needed at runtime.
-      // @aws-sdk/* and @smithy/* use circular re-exports that confuse Rollup; mark
-      // them external so Electron requires them directly from node_modules instead.
+      // @aws-sdk/* and @smithy/* were previously external but that breaks packaged
+      // builds: with npm workspaces hoisting, those packages live at the workspace
+      // root node_modules/ which electron-forge never copies into the .asar.
+      // Bundling them with Vite is the correct fix.
       external: [
         'bufferutil',
         'utf-8-validate',
-        /^@aws-sdk\//,
-        /^@smithy\//,
       ],
     },
   },
