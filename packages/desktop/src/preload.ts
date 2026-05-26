@@ -183,6 +183,22 @@ contextBridge.exposeInMainWorld('api', {
      */
     readFile: (filePath: string): Promise<string> =>
       Promise.resolve(fs.readFileSync(filePath, 'utf-8')),
+
+    /**
+     * Download and install an extension from the marketplace.
+     * `downloadUrl` must point to an `.ocx` file (a ZIP archive containing
+     * manifest.json + dist/index.js). The archive is extracted to
+     * userData/extensions/<id>/. Call loadInstalledExtensions() after this returns.
+     */
+    install: (id: string, downloadUrl: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('extensions:install', { id, downloadUrl }),
+
+    /**
+     * Remove an installed extension from userData/extensions/<id>/.
+     * Call loadInstalledExtensions() in the renderer after this returns.
+     */
+    uninstall: (id: string): Promise<void> =>
+      ipcRenderer.invoke('extensions:uninstall', id),
   },
 
   log: {

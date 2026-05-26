@@ -607,6 +607,83 @@ export function registerIpcHandlers(): void {
     return results;
   });
 
+  /**
+   * Download and install an extension from the marketplace.
+   *
+   * `downloadUrl` must be an HTTPS URL pointing to an `.ocx` file — a ZIP
+   * archive containing at minimum:
+   *   manifest.json   ← extension metadata (id, name, entryPoint, contributes, …)
+   *   dist/index.js   ← bundled JS entry point
+   *
+   * The archive is extracted to `userData/extensions/<id>/` so that
+   * `scanExtensionDir` picks it up on the next call to `getInstalled`.
+   *
+   * After this call the renderer should invoke `loadInstalledExtensions()` so
+   * the new extension appears without requiring an app restart.
+   */
+  ipcMain.handle(
+    'extensions:install',
+    async (
+      _e,
+      payload: { id: string; downloadUrl: string },
+    ): Promise<{ success: boolean; error?: string }> => {
+      try {
+        // Validate the download URL before hitting the network.
+        const parsed = new URL(payload.downloadUrl);
+        if (parsed.protocol !== 'https:') {
+          return { success: false, error: 'Only https:// download URLs are allowed.' };
+        }
+
+        // Download the .ocx archive.
+        const res = await fetch(payload.downloadUrl, {
+          headers: { 'User-Agent': `openconduit/${app.getVersion()}` },
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) {
+          return { success: false, error: `Download failed: HTTP ${res.status}` };
+        }
+        const buffer = await res.arrayBuffer();
+
+        // Extract the ZIP archive using fflate (pure-JS, no native deps).
+        const { unzipSync } = await import('fflate');
+        const entries = unzipSync(new Uint8Array(buffer));
+
+        if (!entries['manifest.json']) {
+          return { success: false, error: 'Invalid .ocx: manifest.json not found in archive.' };
+        }
+
+        const extDir = path.join(app.getPath('userData'), 'extensions', payload.id);
+
+        // Write every file from the archive, creating sub-directories as needed.
+        for (const [filename, content] of Object.entries(entries)) {
+          const dest = path.join(extDir, filename);
+          // Guard against zip-slip: every resolved path must stay inside extDir.
+          if (!dest.startsWith(extDir + path.sep) && dest !== extDir) {
+            return { success: false, error: `Invalid archive entry: "${filename}"` };
+          }
+          await fs.mkdir(path.dirname(dest), { recursive: true });
+          await fs.writeFile(dest, Buffer.from(content));
+        }
+
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+
+  /**
+   * Remove an installed extension from userData/extensions/<id>/.
+   * The renderer should call `loadInstalledExtensions()` afterwards to
+   * reflect the removal (or restart the app).
+   */
+  ipcMain.handle('extensions:uninstall', async (_e, id: string): Promise<void> => {
+    // Reject ids containing path-separator characters to prevent traversal.
+    if (/[/\\]/.test(id)) throw new Error('Invalid extension id');
+    const extDir = path.join(app.getPath('userData'), 'extensions', id);
+    await fs.rm(extDir, { recursive: true, force: true });
+  });
+
   // ─── Backend constants (not user-configurable) ────────────────────────────
   const GITHUB_REPO = 'OpenConduit/Client';
   // Set WORKER_URL to your deployed Cloudflare Worker once live; leave empty to use GitHub directly.
