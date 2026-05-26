@@ -60,7 +60,6 @@ import type { ClientEvent } from './collaboration/types';
 
 const EXTENSION_SERVER_ID = '__extension__';
 const TELEMETRY_PRIMARY = 'https://updates.openconduit.ai';
-const TELEMETRY_BACKUP  = 'https://openconduit-release-api.chumchal-account.workers.dev';
 
 // ─── Telemetry helpers ────────────────────────────────────────────────────────
 // These are exported so main.ts can call them at boot and on crash.
@@ -70,16 +69,12 @@ async function postTelemetry(payload: object): Promise<void> {
   const ua = `openconduit/${app.getVersion()}`;
   const body = JSON.stringify(payload);
   const headers = { 'Content-Type': 'application/json', 'User-Agent': ua };
-  // Try primary first; fall back to backup if it fails or times out.
-  for (const base of [TELEMETRY_PRIMARY, TELEMETRY_BACKUP]) {
-    try {
-      const res = await fetch(`${base}/telemetry`, {
-        method: 'POST', headers, body,
-        signal: AbortSignal.timeout(4000),
-      });
-      if (res.ok || res.status < 500) return; // success or client error — don't retry
-    } catch { /* try backup */ }
-  }
+  try {
+    await fetch(`${TELEMETRY_PRIMARY}/telemetry`, {
+      method: 'POST', headers, body,
+      signal: AbortSignal.timeout(4000),
+    });
+  } catch { /* silently swallow */ }
 }
 
 export async function fireTelemetrySessionStart(): Promise<void> {
@@ -88,6 +83,7 @@ export async function fireTelemetrySessionStart(): Promise<void> {
   if (!settings.telemetry?.usageReports) return;
   await postTelemetry({
     event: 'session_start',
+    machineId: getMachineId(),
     appVersion: app.getVersion(),
     platform: process.platform,
     arch: process.arch,
@@ -135,8 +131,10 @@ export async function fireTelemetryCrash(error: Error, extra?: { crashDumpsDir?:
   if (!settings.telemetry?.crashReports) return;
   await postTelemetry({
     event: 'crash',
+    machineId: getMachineId(),
     appVersion: app.getVersion(),
     platform: process.platform,
+    arch: process.arch,
     electronVersion: process.versions.electron,
     errorType: error.name,
     errorMessage: error.message.replace(/(?:\/[\w.-]+){2,}/g, '<path>').slice(0, 300),
@@ -1312,6 +1310,15 @@ export function registerIpcHandlers(): void {
     } catch { /* log write failure must never crash the app */ }
   });
 
+  // Renderer-side JS errors (window.onerror, unhandledrejection, React boundary)
+  // arrive here so they can be persisted and included in crash telemetry.
+  ipcMain.on('renderer:error', (_e, { message, stack }: { message: string; stack?: string }) => {
+    const err = new Error(message);
+    err.name = 'RendererError';
+    if (stack) err.stack = stack;
+    void fireTelemetryCrash(err);
+  });
+
   ipcMain.handle('log:open', async (): Promise<void> => {
     await fs.mkdir(logsDir, { recursive: true });
     await shell.openPath(logsDir);
@@ -1403,6 +1410,8 @@ export function registerIpcHandlers(): void {
   });
 
   // ─── Crash report: manual send ───────────────────────────────────────────
+  ipcMain.handle('machine:get-id', (): string => getMachineId());
+
   ipcMain.handle('crash:has-stored', (): boolean => {
     return getStoredCrash() !== undefined;
   });
@@ -1412,6 +1421,7 @@ export function registerIpcHandlers(): void {
     if (!crash) return;
     await postTelemetry({
       event: 'crash',
+      machineId: getMachineId(),
       appVersion: crash.appVersion,
       platform: crash.platform,
       electronVersion: crash.electronVersion,

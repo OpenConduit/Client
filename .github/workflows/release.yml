@@ -64,6 +64,9 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           NODE_ENV: production
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       - name: Rename macOS artifacts
         run: |
@@ -74,6 +77,16 @@ jobs:
           if [ -n "$DMG" ]; then
             mv "$DMG" "packages/desktop/out/make/OpenConduit-mac-arm64-${VERSION}.dmg"
           fi
+
+      - name: Upload dSYMs to Sentry
+        continue-on-error: true
+        run: |
+          npx sentry-cli debug-files upload \
+            --org openconduit \
+            --project ${{ secrets.SENTRY_PROJECT }} \
+            packages/desktop/out/make
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Clean up keychain
         if: always()
@@ -116,6 +129,9 @@ jobs:
         run: npm run make -- --platform win32 --arch ${{ matrix.arch }}
         env:
           NODE_ENV: production
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       - name: Rename Windows artifacts
         shell: pwsh
@@ -165,6 +181,9 @@ jobs:
         run: npm run make -- --platform linux
         env:
           NODE_ENV: production
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4

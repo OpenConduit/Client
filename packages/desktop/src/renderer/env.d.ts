@@ -20,6 +20,7 @@ type UnsubFn = () => void;
 
 declare global {
   const __APP_VERSION__: string;
+  const __SENTRY_DSN__: string;
   interface Window {
     api: {
       chat: {
@@ -150,12 +151,18 @@ declare global {
       diagnostics: {
         /** Write a key/value pair into the Crashpad minidump for crash diagnosis. */
         setParam: (key: string, value: string) => void;
+        /** Report a renderer-side JS error to the main process for crash telemetry. */
+        reportError: (message: string, stack?: string) => void;
       };
       crash: {
         /** Returns true if a crash report has been stored and is available to send. */
         hasStored: () => Promise<boolean>;
         /** Sends the stored crash report to telemetry and clears it. */
         sendStored: () => Promise<void>;
+      };
+      machine: {
+        /** Returns the persistent anonymous machine ID used for telemetry deduplication. */
+        getId: () => Promise<string>;
       };
       folder: {
         /** Opens a native directory picker; resolves to the selected path or null. */
