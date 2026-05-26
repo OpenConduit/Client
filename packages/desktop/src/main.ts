@@ -214,57 +214,41 @@ app.on('ready', () => {
   }
   createWindow();
 
-  // Auto-update: resolve the best update URL after window creation so startup
-  // isn't delayed. Tries the custom domain first; falls back to the direct
-  // Worker URL if unreachable.
+  // Auto-update setup after window creation so startup isn't delayed.
   if (app.isPackaged) {
     const version = app.getVersion();
     const channel = version.includes('alpha') ? 'alpha' : version.includes('beta') ? 'beta' : 'stable';
     const urlPath = `updates/${channel}/${process.platform}/${process.arch}`;
-    const primary = `https://updates.openconduit.ai/${urlPath}`;
-    const backup  = `https://openconduit-release-api.chumchal-account.workers.dev/${urlPath}`;
-    const probe   = process.platform === 'darwin' ? 'RELEASES.json' : 'RELEASES';
+    const baseUrl = `https://updates.openconduit.ai/${urlPath}`;
+    const updateMode = getSettings().updateMode ?? 'automatic';
 
-    void (async () => {
-      let baseUrl = backup;
-      try {
-        const res = await fetch(`${primary}/${probe}`, {
-          method: 'HEAD',
-          signal: AbortSignal.timeout(4000),
-        });
-        if (res.ok || res.status === 204) baseUrl = primary;
-      } catch { /* primary unreachable — use backup */ }
+    // manual mode: skip the auto-updater entirely; user checks via Settings
+    if (updateMode === 'manual') return;
 
-      const updateMode = getSettings().updateMode ?? 'automatic';
+    // download-only: download silently, then broadcast to renderer when ready
+    // automatic:     download silently and show OS restart dialog when ready
+    const notifyUser = updateMode === 'automatic';
 
-      // manual mode: skip the auto-updater entirely; user checks via Settings
-      if (updateMode === 'manual') return;
+    updateElectronApp({
+      updateSource: { type: UpdateSourceType.StaticStorage, baseUrl },
+      updateInterval: '1 hour',
+      notifyUser,
+    });
 
-      // download-only: download silently, then broadcast to renderer when ready
-      // automatic:     download silently and show OS restart dialog when ready
-      const notifyUser = updateMode === 'automatic';
-
-      updateElectronApp({
-        updateSource: { type: UpdateSourceType.StaticStorage, baseUrl },
-        updateInterval: '1 hour',
-        notifyUser,
-      });
-
-      // For download-only mode, broadcast the 'update:downloaded' event so the
-      // Updates tab can show the "Restart & Install" banner. Also broadcast
-      // 'update:downloading' when Squirrel starts the download so the progress
-      // bar appears if Settings is open.
-      if (updateMode === 'download-only') {
-        const broadcast = (channel: string) => {
-          for (const win of BrowserWindow.getAllWindows()) {
-            win.webContents.send(channel);
-          }
-        };
-        autoUpdater.once('update-available', () => broadcast('update:downloading'));
-        autoUpdater.once('update-downloaded', () => broadcast('update:downloaded'));
-        autoUpdater.once('error', () => { /* silent for background downloads */ });
-      }
-    })();
+    // For download-only mode, broadcast the 'update:downloaded' event so the
+    // Updates tab can show the "Restart & Install" banner. Also broadcast
+    // 'update:downloading' when Squirrel starts the download so the progress
+    // bar appears if Settings is open.
+    if (updateMode === 'download-only') {
+      const broadcast = (channel: string) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(channel);
+        }
+      };
+      autoUpdater.once('update-available', () => broadcast('update:downloading'));
+      autoUpdater.once('update-downloaded', () => broadcast('update:downloaded'));
+      autoUpdater.once('error', () => { /* silent for background downloads */ });
+    }
   }
 });
 registerIpcHandlers();

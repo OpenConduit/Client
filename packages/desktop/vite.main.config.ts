@@ -44,7 +44,9 @@ export default defineConfig(({ mode }) => {
       // Suppress the "circular dependency" warnings emitted by @smithy's export*
       // re-export graph — they are harmless build-time noise.
       onwarn(warning, defaultHandler) {
-        if (warning.code === 'CIRCULAR_DEPENDENCY' && warning.ids?.some((id) => id.includes('@smithy') || id.includes('@aws-sdk'))) return;
+        const isAwsSmitthy = (s?: string) => s?.includes('@smithy') || s?.includes('@aws-sdk');
+        if (warning.ids?.some(isAwsSmitthy)) return;
+        if (isAwsSmitthy(warning.message)) return;
         defaultHandler(warning);
       },
       output: {

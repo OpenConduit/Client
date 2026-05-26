@@ -1,7 +1,7 @@
 {
   "name": "openconduit",
   "productName": "OpenConduit",
-  "version": "2.0.0-beta.5",
+  "version": "2.0.0-beta.6",
   "description": "Cross-platform desktop AI chat client — OpenAI, Anthropic, LM Studio, and MCP tool servers",
   "main": ".vite/build/main.js",
   "private": true,
@@ -58,7 +58,7 @@
     "@aws-sdk/client-bedrock-runtime": "^3.1053.0",
     "@google/genai": "^2.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@openconduit/core": "^2.0.0-beta.4",
+    "@openconduit/core": "^2.0.0-beta.5",
     "@sentry/electron": "^7.13.0",
     "@types/pdf-parse": "^1.1.5",
     "electron-squirrel-startup": "^1.0.1",

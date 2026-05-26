@@ -827,23 +827,13 @@ export function registerIpcHandlers(): void {
   // Sets the Squirrel feed URL (needed when updateMode is 'manual') and kicks
   // off a download.  The 'update:downloaded' event will be sent to all windows
   // when the download completes so the UI can show "Restart & Install".
-  ipcMain.handle('update:trigger-download', async (): Promise<void> => {
+  ipcMain.handle('update:trigger-download', (): void => {
     const channel = (getSettings().updateChannel ?? 'stable') as 'stable' | 'beta' | 'alpha';
     const urlPath = `updates/${channel}/${process.platform}/${process.arch}`;
-    const primary = `https://updates.openconduit.ai/${urlPath}`;
-    const backup  = `https://openconduit-release-api.chumchal-account.workers.dev/${urlPath}`;
     const probe   = process.platform === 'darwin' ? 'RELEASES.json' : 'RELEASES';
+    const feedUrl = `https://updates.openconduit.ai/${urlPath}/${probe}`;
 
-    let baseUrl = backup;
-    try {
-      const res = await fetch(`${primary}/${probe}`, {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(4000),
-      });
-      if (res.ok || res.status === 204) baseUrl = primary;
-    } catch { /* primary unreachable — use backup */ }
-
-    autoUpdater.setFeedURL({ url: `${baseUrl}/${probe}` });
+    autoUpdater.setFeedURL({ url: feedUrl });
 
     const broadcast = (channel: string, ...args: unknown[]) => {
       for (const win of BrowserWindow.getAllWindows()) {
@@ -854,6 +844,7 @@ export function registerIpcHandlers(): void {
     // Squirrel's 'update-available' fires as soon as the download starts.
     autoUpdater.once('update-available', () => broadcast('update:downloading'));
     autoUpdater.once('update-downloaded', () => broadcast('update:downloaded'));
+    autoUpdater.once('update-not-available', () => broadcast('update:error', 'No build available for this platform yet. Check the GitHub release page for updates.'));
     autoUpdater.once('error', (err: Error) => broadcast('update:error', err?.message ?? 'Unknown error'));
 
     autoUpdater.checkForUpdates();
