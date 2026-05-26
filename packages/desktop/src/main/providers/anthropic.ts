@@ -132,9 +132,12 @@ export async function* streamAnthropic(
   const tempParam = thinkingEnabled ? { temperature: 1 } : (params.temperature !== undefined ? { temperature: params.temperature } : {});
   const topPParam = !thinkingEnabled && params.temperature === undefined && params.topP !== undefined ? { top_p: params.topP } : {};
 
+  const budget = thinkingEnabled ? thinkingBudget[reasoning!] : 0;
+  const maxTokens = Math.max(params.maxTokens ?? 4096, budget + 1000);
+
   const streamParams: Anthropic.MessageStreamParams = {
     model,
-    max_tokens: params.maxTokens ?? 4096,
+    max_tokens: maxTokens,
     ...tempParam,
     ...topPParam,
     messages: toAnthropicMessages(messages),
