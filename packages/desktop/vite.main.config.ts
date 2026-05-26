@@ -37,16 +37,17 @@ export default defineConfig(({ mode }) => {
       // builds: with npm workspaces hoisting, those packages live at the workspace
       // root node_modules/ which electron-forge never copies into the .asar.
       // Bundling them with Vite is the correct fix.
-      //
-      // inlineDynamicImports: true eliminates the "circular dependency between chunks"
-      // warnings from @smithy's export* re-export graph — the main process has no need
-      // for chunk-splitting so collapsing everything into one bundle is the right call.
       external: [
         'bufferutil',
         'utf-8-validate',
       ],
+      // Suppress the "circular dependency" warnings emitted by @smithy's export*
+      // re-export graph — they are harmless build-time noise.
+      onwarn(warning, defaultHandler) {
+        if (warning.code === 'CIRCULAR_DEPENDENCY' && warning.ids?.some((id) => id.includes('@smithy') || id.includes('@aws-sdk'))) return;
+        defaultHandler(warning);
+      },
       output: {
-        inlineDynamicImports: true,
         // pdfjs-dist (bundled via pdf-parse) has top-level `new DOMMatrix()` that runs
         // at module evaluation time. Its own polyfill loads @napi-rs/canvas via the
         // native `.node` binding, which fails in packaged Electron builds due to ABI

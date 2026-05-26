@@ -64,6 +64,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           NODE_ENV: production
+          NODE_OPTIONS: --max-old-space-size=6144
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
@@ -129,6 +130,7 @@ jobs:
         run: npm run make -- --platform win32 --arch ${{ matrix.arch }}
         env:
           NODE_ENV: production
+          NODE_OPTIONS: --max-old-space-size=6144
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
@@ -181,6 +183,7 @@ jobs:
         run: npm run make -- --platform linux
         env:
           NODE_ENV: production
+          NODE_OPTIONS: --max-old-space-size=6144
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
