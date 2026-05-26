@@ -929,6 +929,22 @@ export function registerIpcHandlers(): void {
           }
         }
 
+        // Broadcast the user message and signal stream start to any active collaboration room.
+        // sendToRoom is a no-op when no collab session is active.
+        const lastUserMsg = request.messages.at(-1);
+        if (lastUserMsg?.role === 'user') {
+          sendToRoom({
+            type: 'message_add',
+            message: {
+              id: lastUserMsg.id,
+              role: lastUserMsg.role,
+              content: lastUserMsg.content,
+              timestamp: lastUserMsg.timestamp,
+            },
+          });
+        }
+        sendToRoom({ type: 'stream_start', messageId });
+
         for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
           if (abort.signal.aborted) break;
 
@@ -981,6 +997,7 @@ export function registerIpcHandlers(): void {
                 messageId,
                 delta: event.text,
               } as StreamChunk);
+              sendToRoom({ type: 'stream_chunk', messageId, delta: event.text });
             } else if (event.type === 'thinking') {
               thinkingText += event.text;
               wc.send(IPC.CHAT_STREAM_THINKING, {
@@ -1007,6 +1024,16 @@ export function registerIpcHandlers(): void {
               toolCalls: [],
               usage: turnUsage,
             } as StreamEnd);
+            sendToRoom({
+              type: 'stream_end',
+              messageId,
+              message: {
+                id: messageId,
+                role: 'assistant',
+                content: fullText,
+                timestamp: Date.now(),
+              },
+            });
             break;
           }
 
