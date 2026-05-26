@@ -47,6 +47,7 @@ import { callFileTool, FILE_SERVER_ID, FILE_TOOL_DEFS } from './filetools';
 import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { streamBedrock } from './providers/bedrock';
+import { streamPerplexity } from './providers/perplexity';
 import { streamCopilot, startCopilotAuth, pollCopilotAuth, listCopilotModels, getCopilotUsage } from './providers/copilot';
 import { evaluateRouting } from './routing';
 import {
@@ -832,6 +833,8 @@ export function registerIpcHandlers(): void {
           return streamGemini(provider, messages, model, parameters, systemPrompt, [], undefined);
         case 'bedrock':
           return streamBedrock(provider, messages, model, parameters, systemPrompt, []);
+        case 'perplexity':
+          return streamPerplexity(provider, messages, model, parameters, systemPrompt, [], undefined);
         case 'copilot':
           return streamCopilot(provider, messages, model, parameters, systemPrompt, [], undefined);
         default:
@@ -971,6 +974,8 @@ export function registerIpcHandlers(): void {
                 return streamGemini(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
               case 'bedrock':
                 return streamBedrock(provider, messages, model, parameters, effectiveSystemPrompt, tools);
+              case 'perplexity':
+                return streamPerplexity(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
               case 'copilot':
                 return streamCopilot(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
             }
