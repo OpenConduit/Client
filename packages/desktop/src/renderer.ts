@@ -1,4 +1,5 @@
 import './index.css';
+import * as Sentry from '@sentry/electron/renderer';
 import { initService } from '@openconduit/core/services';
 import type { AppService } from '@openconduit/core/services/appService';
 import { debugConsole } from '@openconduit/core';
@@ -6,11 +7,19 @@ import type { DebugLevel, LogCategory } from '@openconduit/core';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '@openconduit/core/App';
+import { SentryDiag } from './renderer/SentryDiag';
 
 // ── Renderer lifecycle markers ───────────────────────────────────────────────
 // Each call writes a key into the Crashpad extra-parameters table so the
 // renderer's progress is visible in .dmp / .ips files if V8 crashes.
 window.api.diagnostics.setParam('rendererState', 'preInit');
+
+// Initialise Sentry in the renderer — events are forwarded to the main process
+// via the IPC bridge set up in preload.ts, so no CORS issues.
+Sentry.init({
+  dsn: __SENTRY_DSN__ || undefined,
+  release: `openconduit@${__APP_VERSION__}`,
+});
 
 // Wire the Electron IPC bridge to the AppService interface.
 // This must run before React renders so stores can access the service.
@@ -33,12 +42,23 @@ function logRendererError(message: string, stack?: string) {
   } catch { /* log failure must never throw */ }
 }
 
+// Throttle: send at most one renderer error to crash telemetry per 60 s.
+let lastErrorReportMs = 0;
+function reportRendererError(message: string, stack?: string) {
+  logRendererError(message, stack);
+  const now = Date.now();
+  if (now - lastErrorReportMs > 60_000) {
+    lastErrorReportMs = now;
+    try { window.api.diagnostics.reportError(message, stack); } catch { /* non-fatal */ }
+  }
+}
+
 window.addEventListener('error', (e) => {
-  logRendererError(`Uncaught error: ${e.message}`, e.error?.stack);
+  reportRendererError(`Uncaught error: ${e.message}`, e.error?.stack);
 });
 window.addEventListener('unhandledrejection', (e) => {
   const msg = e.reason instanceof Error ? e.reason.message : String(e.reason);
-  logRendererError(`Unhandled rejection: ${msg}`, e.reason?.stack);
+  reportRendererError(`Unhandled rejection: ${msg}`, e.reason?.stack);
 });
 
 // ── React Error Boundary ──────────────────────────────────────────────────────
@@ -54,10 +74,15 @@ class AppErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    logRendererError(
+    reportRendererError(
       `React boundary caught: ${error.message}`,
       (error.stack ?? '') + '\n\nComponent stack:' + info.componentStack,
     );
+    // Send to Sentry with React component stack as extra context.
+    Sentry.withScope((scope) => {
+      scope.setExtra('componentStack', info.componentStack);
+      Sentry.captureException(error);
+    });
   }
 
   reload() {
@@ -105,6 +130,11 @@ createRoot(document.getElementById('root')!).render(
   React.createElement(
     React.StrictMode,
     null,
-    React.createElement(AppErrorBoundary, null, React.createElement(App)),
+    React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(AppErrorBoundary, null, React.createElement(App)),
+      React.createElement(SentryDiag),
+    ),
   ),
 );

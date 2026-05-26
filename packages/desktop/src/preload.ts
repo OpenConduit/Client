@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer, crashReporter } from 'electron';
+// Side-effect import: hooks up the Sentry IPC bridge so the renderer can
+// forward events to the main-process Sentry instance (contextIsolation: true).
+import '@sentry/electron/preload';
 
 // ── Crash breadcrumbs ─────────────────────────────────────────────────────────
 // Intercept every IPC invoke so the last-called channel is written into the
@@ -274,6 +277,12 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('crash:send-stored'),
   },
 
+  machine: {
+    /** Returns the persistent anonymous machine ID used for telemetry deduplication. */
+    getId: (): Promise<string> =>
+      ipcRenderer.invoke('machine:get-id'),
+  },
+
   diagnostics: {
     /**
      * Write an arbitrary key/value pair into the Crashpad extra-parameters
@@ -284,6 +293,12 @@ contextBridge.exposeInMainWorld('api', {
     setParam: (key: string, value: string): void => {
       try { crashReporter.addExtraParameter(key.slice(0, 40), value.slice(0, 127)); } catch { /* non-fatal */ }
     },
+    /**
+     * Report a renderer-side JS error to the main process so it can be
+     * persisted and included in crash telemetry. Fire-and-forget.
+     */
+    reportError: (message: string, stack?: string): void =>
+      ipcRenderer.send('renderer:error', { message, stack }),
   },
 
   folder: {

@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { createRequire } from 'module';
@@ -7,10 +7,19 @@ const require = createRequire(import.meta.url);
 const { version } = require('./package.json') as { version: string };
 
 // https://vitejs.dev/config
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Load .env from this package directory — empty prefix picks up all vars,
+  // not just VITE_-prefixed ones (e.g. SENTRY_DSN, which we don't want
+  // accidentally exposed to the browser via import.meta.env).
+  const env = loadEnv(mode, __dirname, '');
+
+  return {
   plugins: [react()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
+    // Injected at build time from SENTRY_DSN in .env or the shell environment.
+    // Empty string → Sentry.init() receives undefined and no-ops.
+    __SENTRY_DSN__: JSON.stringify(env.SENTRY_DSN ?? ''),
   },
   css: {
     postcss: './postcss.config.cjs',
@@ -43,4 +52,5 @@ export default defineConfig({
       '@openconduit/core/App',
     ],
   },
+  };
 });

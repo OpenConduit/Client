@@ -1,16 +1,54 @@
-import { app, BrowserWindow, session, autoUpdater, crashReporter } from 'electron';
+import { app, BrowserWindow, session, autoUpdater } from 'electron';
+import * as Sentry from '@sentry/electron/main';
+import { sentryMinidumpIntegration } from '@sentry/electron/main';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { updateElectronApp, UpdateSourceType } from 'update-electron-app';
 import { registerIpcHandlers, fireTelemetrySessionStart, fireTelemetryCrash } from './main/ipc';
-import { getSettings } from './main/store/settings';
+import { getSettings, getMachineId } from './main/store/settings';
 import { destroyBrowserWindow } from './main/webtools/browser';
 
 if (started) app.quit();
 
+// Initialise Sentry before `app.ready` as required by @sentry/electron.
+// The minidump (Crashpad) integration is excluded here and added explicitly
+// inside app.on('ready') — calling crashReporter.start() before the framework
+// is fully initialised conflicts with Chromium's exception handler on Apple Silicon.
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || undefined,
+  release: `openconduit@${app.getVersion()}`,
+  environment: app.isPackaged ? 'production' : 'development',
+  // Exclude the minidump integration — it is registered after app.ready below.
+  integrations: (defaults) => defaults.filter((i) => i.name !== 'SentryMinidump'),
+  initialScope: {
+    tags: {
+      appVersion:  app.getVersion(),
+      platform:    process.platform,
+      arch:        process.arch,
+      electronV:   process.versions.electron,
+      nodeV:       process.versions.node,
+      v8V:         process.versions.v8,
+    },
+  },
+  // Respect the user's crash-reporting opt-out. beforeSend runs at event-send
+  // time (not at init time) so getSettings() is safe to call here — userData
+  // is always set before any event can be generated.
+  beforeSend(event) {
+    try {
+      if (getSettings().telemetry?.crashReports === false) return null;
+    } catch { /* store not ready yet — allow the event through */ }
+    return event;
+  },
+});
+
 // Pin userData to a stable name so it never moves when productName changes.
 app.setPath('userData', path.join(app.getPath('appData'), 'openconduit'));
+
+// Identify this device in Sentry. getMachineId() requires userData to be set first
+// (it reads from electron-store). The ID is a random UUID generated on first launch
+// and is never tied to any personal information.
+Sentry.setUser({ id: getMachineId() });
 
 // Register openconduit:// as a deep-link protocol (e.g. openconduit://join?roomId=xxx)
 app.setAsDefaultProtocolClient('openconduit');
@@ -83,6 +121,13 @@ const createWindow = () => {
     );
   }
 
+  // Crash-loop guard: track recent renderer crash timestamps.
+  // If the renderer crashes 3+ times within 15 seconds, stop reloading and
+  // show a static error page so the user isn't stuck in an infinite loop.
+  const CRASH_WINDOW_MS = 15_000;
+  const CRASH_LOOP_THRESHOLD = 3;
+  const rendererCrashTimes: number[] = [];
+
   // Reload automatically when the renderer crashes instead of staying white.
   // Skips clean exits (e.g. deliberate reload / navigation) to avoid loops.
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
@@ -95,6 +140,42 @@ const createWindow = () => {
       reason: details.reason,
       exitCode: details.exitCode,
     });
+
+    const now = Date.now();
+    rendererCrashTimes.push(now);
+    // Evict timestamps outside the window
+    while (rendererCrashTimes.length > 0 && rendererCrashTimes[0] < now - CRASH_WINDOW_MS) {
+      rendererCrashTimes.shift();
+    }
+
+    if (rendererCrashTimes.length >= CRASH_LOOP_THRESHOLD) {
+      // Crash loop detected — load a static fallback instead of reloading.
+      // The user can still quit or submit a bug report from this page.
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.loadURL(
+          'data:text/html,' + encodeURIComponent([
+            '<!DOCTYPE html><html><head>',
+            '<meta charset="utf-8">',
+            '<style>body{margin:0;display:flex;flex-direction:column;align-items:center;',
+            'justify-content:center;height:100vh;background:#0f172a;color:#f8fafc;',
+            'font-family:sans-serif;gap:16px;padding:32px;box-sizing:border-box}',
+            'h2{margin:0;font-size:18px}p{margin:0;font-size:13px;color:#94a3b8;',
+            'max-width:480px;text-align:center}',
+            'button{margin-top:8px;padding:8px 20px;background:#3b82f6;color:#fff;',
+            'border:none;border-radius:8px;font-size:14px;cursor:pointer}',
+            '</style></head><body>',
+            '<div style="font-size:32px">⚠️</div>',
+            '<h2>OpenConduit crashed repeatedly</h2>',
+            '<p>The app crashed ' + CRASH_LOOP_THRESHOLD + ' times in ' + (CRASH_WINDOW_MS / 1000) + ' seconds. ',
+            'Please restart the application. If it keeps happening, use ',
+            '<strong>Settings → Feedback</strong> to report the issue.</p>',
+            '<button onclick="window.location.reload()">Try reloading anyway</button>',
+            '</body></html>',
+          ].join('')),
+        );
+      }
+      return;
+    }
 
     setTimeout(() => {
       if (mainWindow.isDestroyed()) return;
@@ -111,24 +192,10 @@ const createWindow = () => {
 };
 
 app.on('ready', () => {
-  // Start Crashpad inside app.on('ready') so the Mach exception handler is
-  // registered after the framework is fully initialised. Calling it before
-  // app.ready on Apple Silicon can conflict with Chromium's own exception
-  // handling and trigger spurious CHECK failures in the renderer.
-  crashReporter.start({
-    submitURL: '',
-    uploadToServer: false,
-    // Embed build/env info in every minidump so crash reports are self-contained
-    // even when the .dmp is inspected offline without a symbol server.
-    globalExtra: {
-      appVersion: app.getVersion(),
-      platform:   process.platform,
-      arch:       process.arch,
-      electronV:  process.versions.electron,
-      nodeV:      process.versions.node,
-      v8V:        process.versions.v8,
-    },
-  });
+  // Register the Crashpad/minidump integration now that the framework is fully
+  // initialised. On Apple Silicon, crashReporter.start() must not be called
+  // before app.ready or it conflicts with Chromium's own exception handling.
+  Sentry.addIntegration(sentryMinidumpIntegration());
   // In production the renderer loads via file://, so absolute paths like
   // /app-icon.png resolve to the filesystem root instead of the bundled asset
   // directory. Intercept those requests and redirect to the correct path.
