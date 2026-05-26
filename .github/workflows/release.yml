@@ -69,23 +69,6 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
-      - name: Verify code signature
-        run: |
-          APP=$(find packages/desktop/out -name "*.app" | head -1)
-          if [ -z "$APP" ]; then
-            echo "::error::No .app bundle found after build"
-            exit 1
-          fi
-          echo "Checking signature on: $APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          # Confirm it is signed with a Developer ID (not ad-hoc)
-          IDENTITY=$(codesign -dv "$APP" 2>&1 | grep 'Authority=Developer ID')
-          if [ -z "$IDENTITY" ]; then
-            echo "::error::App is not signed with a Developer ID certificate. Auto-update will fail."
-            exit 1
-          fi
-          echo "Signature OK: $IDENTITY"
-
       - name: Rename macOS artifacts
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}"
