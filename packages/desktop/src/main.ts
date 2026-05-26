@@ -201,11 +201,15 @@ app.on('ready', () => {
   // directory. Intercept those requests and redirect to the correct path.
   if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const assetDir = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`);
+    // Compute the correct URL once so we can exclude it from the redirect
+    // condition and avoid an infinite redirect loop (the target also ends with
+    // '/app-icon.png', which would re-trigger the handler on every redirect).
+    const appIconUrl = pathToFileURL(path.join(assetDir, 'app-icon.png')).href;
     session.defaultSession.webRequest.onBeforeRequest(
       { urls: ['file://*'] },
       (details, callback) => {
-        if (details.url.endsWith('/app-icon.png')) {
-          callback({ redirectURL: pathToFileURL(path.join(assetDir, 'app-icon.png')).href });
+        if (details.url.endsWith('/app-icon.png') && details.url !== appIconUrl) {
+          callback({ redirectURL: appIconUrl });
         } else {
           callback({});
         }
