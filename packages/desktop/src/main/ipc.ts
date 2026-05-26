@@ -47,6 +47,7 @@ import { callFileTool, FILE_SERVER_ID, FILE_TOOL_DEFS } from './filetools';
 import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { streamBedrock } from './providers/bedrock';
+import { streamPerplexity } from './providers/perplexity';
 import { streamCopilot, startCopilotAuth, pollCopilotAuth, listCopilotModels, getCopilotUsage } from './providers/copilot';
 import { evaluateRouting } from './routing';
 import {
@@ -606,6 +607,83 @@ export function registerIpcHandlers(): void {
     return results;
   });
 
+  /**
+   * Download and install an extension from the marketplace.
+   *
+   * `downloadUrl` must be an HTTPS URL pointing to an `.ocx` file — a ZIP
+   * archive containing at minimum:
+   *   manifest.json   ← extension metadata (id, name, entryPoint, contributes, …)
+   *   dist/index.js   ← bundled JS entry point
+   *
+   * The archive is extracted to `userData/extensions/<id>/` so that
+   * `scanExtensionDir` picks it up on the next call to `getInstalled`.
+   *
+   * After this call the renderer should invoke `loadInstalledExtensions()` so
+   * the new extension appears without requiring an app restart.
+   */
+  ipcMain.handle(
+    'extensions:install',
+    async (
+      _e,
+      payload: { id: string; downloadUrl: string },
+    ): Promise<{ success: boolean; error?: string }> => {
+      try {
+        // Validate the download URL before hitting the network.
+        const parsed = new URL(payload.downloadUrl);
+        if (parsed.protocol !== 'https:') {
+          return { success: false, error: 'Only https:// download URLs are allowed.' };
+        }
+
+        // Download the .ocx archive.
+        const res = await fetch(payload.downloadUrl, {
+          headers: { 'User-Agent': `openconduit/${app.getVersion()}` },
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) {
+          return { success: false, error: `Download failed: HTTP ${res.status}` };
+        }
+        const buffer = await res.arrayBuffer();
+
+        // Extract the ZIP archive using fflate (pure-JS, no native deps).
+        const { unzipSync } = await import('fflate');
+        const entries = unzipSync(new Uint8Array(buffer));
+
+        if (!entries['manifest.json']) {
+          return { success: false, error: 'Invalid .ocx: manifest.json not found in archive.' };
+        }
+
+        const extDir = path.join(app.getPath('userData'), 'extensions', payload.id);
+
+        // Write every file from the archive, creating sub-directories as needed.
+        for (const [filename, content] of Object.entries(entries)) {
+          const dest = path.join(extDir, filename);
+          // Guard against zip-slip: every resolved path must stay inside extDir.
+          if (!dest.startsWith(extDir + path.sep) && dest !== extDir) {
+            return { success: false, error: `Invalid archive entry: "${filename}"` };
+          }
+          await fs.mkdir(path.dirname(dest), { recursive: true });
+          await fs.writeFile(dest, Buffer.from(content));
+        }
+
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+
+  /**
+   * Remove an installed extension from userData/extensions/<id>/.
+   * The renderer should call `loadInstalledExtensions()` afterwards to
+   * reflect the removal (or restart the app).
+   */
+  ipcMain.handle('extensions:uninstall', async (_e, id: string): Promise<void> => {
+    // Reject ids containing path-separator characters to prevent traversal.
+    if (/[/\\]/.test(id)) throw new Error('Invalid extension id');
+    const extDir = path.join(app.getPath('userData'), 'extensions', id);
+    await fs.rm(extDir, { recursive: true, force: true });
+  });
+
   // ─── Backend constants (not user-configurable) ────────────────────────────
   const GITHUB_REPO = 'OpenConduit/Client';
   // Set WORKER_URL to your deployed Cloudflare Worker once live; leave empty to use GitHub directly.
@@ -832,6 +910,8 @@ export function registerIpcHandlers(): void {
           return streamGemini(provider, messages, model, parameters, systemPrompt, [], undefined);
         case 'bedrock':
           return streamBedrock(provider, messages, model, parameters, systemPrompt, []);
+        case 'perplexity':
+          return streamPerplexity(provider, messages, model, parameters, systemPrompt, [], undefined);
         case 'copilot':
           return streamCopilot(provider, messages, model, parameters, systemPrompt, [], undefined);
         default:
@@ -929,6 +1009,22 @@ export function registerIpcHandlers(): void {
           }
         }
 
+        // Broadcast the user message and signal stream start to any active collaboration room.
+        // sendToRoom is a no-op when no collab session is active.
+        const lastUserMsg = request.messages.at(-1);
+        if (lastUserMsg?.role === 'user') {
+          sendToRoom({
+            type: 'message_add',
+            message: {
+              id: lastUserMsg.id,
+              role: lastUserMsg.role,
+              content: lastUserMsg.content,
+              timestamp: lastUserMsg.timestamp,
+            },
+          });
+        }
+        sendToRoom({ type: 'stream_start', messageId });
+
         for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
           if (abort.signal.aborted) break;
 
@@ -955,6 +1051,8 @@ export function registerIpcHandlers(): void {
                 return streamGemini(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
               case 'bedrock':
                 return streamBedrock(provider, messages, model, parameters, effectiveSystemPrompt, tools);
+              case 'perplexity':
+                return streamPerplexity(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
               case 'copilot':
                 return streamCopilot(provider, messages, model, parameters, effectiveSystemPrompt, tools, reasoning);
             }
@@ -981,6 +1079,7 @@ export function registerIpcHandlers(): void {
                 messageId,
                 delta: event.text,
               } as StreamChunk);
+              sendToRoom({ type: 'stream_chunk', messageId, delta: event.text });
             } else if (event.type === 'thinking') {
               thinkingText += event.text;
               wc.send(IPC.CHAT_STREAM_THINKING, {
@@ -1007,6 +1106,16 @@ export function registerIpcHandlers(): void {
               toolCalls: [],
               usage: turnUsage,
             } as StreamEnd);
+            sendToRoom({
+              type: 'stream_end',
+              messageId,
+              message: {
+                id: messageId,
+                role: 'assistant',
+                content: fullText,
+                timestamp: Date.now(),
+              },
+            });
             break;
           }
 

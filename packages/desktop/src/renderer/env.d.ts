@@ -94,6 +94,18 @@ declare global {
          * The preload handles filesystem access on behalf of the renderer.
          */
         readFile: (filePath: string) => Promise<string>;
+        /**
+         * Download and install an extension from the marketplace.
+         * `downloadUrl` must point to an `.ocx` file (ZIP containing manifest.json
+         * + dist/index.js). Extracted to userData/extensions/<id>/.
+         * Call loadInstalledExtensions() after this resolves.
+         */
+        install: (id: string, downloadUrl: string) => Promise<{ success: boolean; error?: string }>;
+        /**
+         * Remove a previously installed extension from userData/extensions/<id>/.
+         * Call loadInstalledExtensions() after this resolves.
+         */
+        uninstall: (id: string) => Promise<void>;
       };
       log: {
         /** Fire-and-forget: append an entry to the daily log file in userData/logs/. */

@@ -22,6 +22,7 @@ const defaults = {
     aiTaskTracking: false,
     aiClarifyingQuestions: false,
     debugMode: false,
+    liveCollaboration: false,
   },
   logging: {
     provider: false,

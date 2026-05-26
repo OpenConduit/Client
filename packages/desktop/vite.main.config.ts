@@ -16,10 +16,17 @@ export default defineConfig({
       // builds: with npm workspaces hoisting, those packages live at the workspace
       // root node_modules/ which electron-forge never copies into the .asar.
       // Bundling them with Vite is the correct fix.
+      //
+      // inlineDynamicImports: true eliminates the "circular dependency between chunks"
+      // warnings from @smithy's export* re-export graph — the main process has no need
+      // for chunk-splitting so collapsing everything into one bundle is the right call.
       external: [
         'bufferutil',
         'utf-8-validate',
       ],
+      output: {
+        inlineDynamicImports: true,
+      },
     },
   },
 });
