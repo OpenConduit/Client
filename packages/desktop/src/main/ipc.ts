@@ -20,6 +20,7 @@ import {
   RoutingConfig,
   RoutingDecision,
   SyncPayload,
+  AnthropicThinkingBlock,
 } from '../shared/types';
 import {
   initRepo,
@@ -1025,6 +1026,28 @@ export function registerIpcHandlers(): void {
           if (request.folderContext?.rootPath) {
             tools.push(...FILE_TOOL_DEFS);
           }
+          // Prefix external MCP tool names with "serverId__" so they are guaranteed unique
+          // across servers — Anthropic and OpenAI reject requests with duplicate tool names.
+          // Built-in, file, and extension tools keep their short names unchanged so their
+          // local handlers can continue to switch on tc.name without modification.
+          // After prefixing, deduplicate: same prefixed name = same tool on same server.
+          {
+            const INTERNAL_IDS = new Set([BUILTIN_SERVER_ID, FILE_SERVER_ID, EXTENSION_SERVER_ID]);
+            const seen = new Set<string>();
+            let i = 0;
+            while (i < tools.length) {
+              const tool = tools[i];
+              if (!INTERNAL_IDS.has(tool.serverId)) {
+                tool.name = `${tool.serverId}__${tool.name}`;
+              }
+              if (seen.has(tool.name)) {
+                tools.splice(i, 1);
+              } else {
+                seen.add(tool.name);
+                i++;
+              }
+            }
+          }
 
           const getStream = () => {
             switch (provider.type) {
@@ -1049,6 +1072,7 @@ export function registerIpcHandlers(): void {
 
           let fullText = '';
           let thinkingText = '';
+          let thinkingBlocks: AnthropicThinkingBlock[] = [];
           let toolCalls: ToolCall[] = [];
           let turnUsage: import('../shared/types').TokenUsage | undefined;
 
@@ -1076,6 +1100,8 @@ export function registerIpcHandlers(): void {
                 messageId,
                 delta: event.text,
               });
+            } else if (event.type === 'thinking_blocks') {
+              thinkingBlocks = event.blocks;
             } else if (event.type === 'tool_calls') {
               toolCalls = event.toolCalls;
             } else if (event.type === 'usage') {
@@ -1094,6 +1120,7 @@ export function registerIpcHandlers(): void {
               messageId,
               toolCalls: [],
               usage: turnUsage,
+              thinkingBlocks: thinkingBlocks.length ? thinkingBlocks : undefined,
             } as StreamEnd);
             sendToRoom({
               type: 'stream_end',
@@ -1111,11 +1138,19 @@ export function registerIpcHandlers(): void {
           // ── Send pending tool calls to renderer NOW so Approve/Deny UI appears
           // before we block on requestApproval. Without this the renderer never
           // sees the tool calls and the approval dialog can never be shown.
-          wc.send(IPC.CHAT_TOOL_PENDING, { conversationId, messageId, toolCalls });
+          // Tag each tool call with its iteration index so the renderer can render
+          // them inline at the right position in the conversation.
+          const taggedToolCalls = toolCalls.map((tc) => ({ ...tc, iteration, pending: false }));
+          wc.send(IPC.CHAT_TOOL_PENDING, {
+            conversationId,
+            messageId,
+            toolCalls: taggedToolCalls,
+            textBefore: fullText,
+          });
 
           // Process each tool call
           const processedCalls: ToolCall[] = [];
-          for (const tc of toolCalls) {
+          for (const tc of taggedToolCalls) {
             if (abort.signal.aborted) break;
 
             let approved = true;
@@ -1205,7 +1240,12 @@ export function registerIpcHandlers(): void {
             }
 
             const t0 = performance.now();
-            const result = await callTool(serverId, tc.name, tc.input);
+            // Strip the serverId__ prefix that was added to guarantee provider-side
+            // name uniqueness before forwarding the call to the actual MCP server.
+            const mcpToolName = tc.name.startsWith(`${serverId}__`)
+              ? tc.name.slice(serverId.length + 2)
+              : tc.name;
+            const result = await callTool(serverId, mcpToolName, tc.input);
             const durationMs = Math.round(performance.now() - t0);
             processedCalls.push({
               ...tc,
@@ -1232,6 +1272,7 @@ export function registerIpcHandlers(): void {
             role: 'assistant',
             content: fullText,
             thinking: thinkingText || undefined,
+            thinkingBlocks: thinkingBlocks.length ? thinkingBlocks : undefined,
             toolCalls: processedCalls,
             timestamp: Date.now(),
           };

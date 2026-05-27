@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import AnthropicFoundry from '@anthropic-ai/foundry-sdk';
-import { McpTool, Message, ModelParameters, ProviderConfig, ReasoningLevel, TokenUsage, ToolCall } from '../../shared/types';
+import { AnthropicThinkingBlock, McpTool, Message, ModelParameters, ProviderConfig, ReasoningLevel, TokenUsage, ToolCall } from '../../shared/types';
 
 function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
   const result: Anthropic.MessageParam[] = [];
@@ -34,6 +34,12 @@ function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
       result.push({ role: 'user' as const, content });
     } else if (m.role === 'assistant') {
       const content: Anthropic.ContentBlockParam[] = [];
+      // Re-include thinking blocks FIRST — Anthropic requires them verbatim with their signature.
+      if (m.thinkingBlocks?.length) {
+        for (const block of m.thinkingBlocks) {
+          content.push(block as unknown as Anthropic.ContentBlockParam);
+        }
+      }
       if (m.content) content.push({ type: 'text', text: m.content });
       if (m.toolCalls?.length) {
         // Only include tool_use blocks when the immediately following message is a
@@ -44,7 +50,16 @@ function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
         const resultIds = new Set(
           nextMsg?.role === 'tool_result' ? (nextMsg.toolCalls ?? []).map((tc) => tc.id) : [],
         );
-        const pairedCalls = m.toolCalls.filter((tc) => resultIds.has(tc.id));
+        // Deduplicate by ID — guard against stored conversations that may have
+        // accumulated duplicate tool call entries (same ID, raw + completed).
+        const seenToolUse = new Set<string>();
+        const pairedCalls = m.toolCalls.filter((tc) => {
+          if (resultIds.has(tc.id) && !seenToolUse.has(tc.id)) {
+            seenToolUse.add(tc.id);
+            return true;
+          }
+          return false;
+        });
         for (const tc of pairedCalls) {
           content.push({
             type: 'tool_use',
@@ -70,8 +85,16 @@ function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
               .map((b) => b.id)
           : [],
       );
+      // Also deduplicate tool_result blocks — same guard as pairedCalls above.
+      const seenResultIds = new Set<string>();
       const toolResultBlocks: Anthropic.ToolResultBlockParam[] = (m.toolCalls ?? [])
-        .filter((tc) => prevToolUseIds.has(tc.id))
+        .filter((tc) => {
+          if (prevToolUseIds.has(tc.id) && !seenResultIds.has(tc.id)) {
+            seenResultIds.add(tc.id);
+            return true;
+          }
+          return false;
+        })
         .map((tc) => ({
           type: 'tool_result' as const,
           tool_use_id: tc.id,
@@ -106,6 +129,7 @@ export async function* streamAnthropic(
 ): AsyncGenerator<
   | { type: 'delta'; text: string }
   | { type: 'thinking'; text: string }
+  | { type: 'thinking_blocks'; blocks: AnthropicThinkingBlock[] }
   | { type: 'tool_calls'; toolCalls: ToolCall[] }
   | { type: 'usage'; usage: TokenUsage }
 > {
@@ -170,6 +194,7 @@ export async function* streamAnthropic(
     },
   };
   const toolCalls: ToolCall[] = [];
+  const thinkingBlocks: AnthropicThinkingBlock[] = [];
   for (const block of finalMsg.content) {
     if (block.type === 'tool_use') {
       toolCalls.push({
@@ -178,7 +203,12 @@ export async function* streamAnthropic(
         input: block.input as Record<string, unknown>,
         pending: true,
       });
+    } else if (block.type === 'thinking') {
+      thinkingBlocks.push({ type: 'thinking', thinking: block.thinking, signature: block.signature });
+    } else if (block.type === 'redacted_thinking') {
+      thinkingBlocks.push({ type: 'redacted_thinking', data: (block as unknown as { data: string }).data });
     }
   }
+  if (thinkingBlocks.length) yield { type: 'thinking_blocks', blocks: thinkingBlocks };
   if (toolCalls.length) yield { type: 'tool_calls', toolCalls };
 }

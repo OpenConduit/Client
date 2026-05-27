@@ -65,7 +65,7 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener(IPC.CHAT_STREAM_ERROR, handler);
     },
 
-    onToolPending: (cb: (data: { conversationId: string; messageId: string; toolCalls: import('./shared/types').ToolCall[] }) => void): UnsubFn => {
+    onToolPending: (cb: (data: { conversationId: string; messageId: string; toolCalls: import('./shared/types').ToolCall[]; textBefore?: string }) => void): UnsubFn => {
       const handler = (_: Electron.IpcRendererEvent, data: unknown) => cb(data as Parameters<typeof cb>[0]);
       ipcRenderer.removeAllListeners(IPC.CHAT_TOOL_PENDING);
       ipcRenderer.on(IPC.CHAT_TOOL_PENDING, handler);

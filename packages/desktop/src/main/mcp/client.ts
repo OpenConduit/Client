@@ -35,8 +35,11 @@ function buildEnhancedPath(): string {
       '/sbin',
       home ? `${home}/.local/bin` : '',
       home ? `${home}/.npm-global/bin` : '',
+      home ? `${home}/.cargo/bin` : '',
       // NVM_BIN is set by nvm when a version is active; fall back to enumerating
       process.env.NVM_BIN ?? '',
+      // uv / uvx may be installed to UV_TOOL_BIN_DIR if overridden by the user
+      process.env.UV_TOOL_BIN_DIR ?? '',
     ];
 
     // Enumerate ~/.nvm/versions/node/*/bin for nvm installs where NVM_BIN isn't set
