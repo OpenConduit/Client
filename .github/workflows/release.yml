@@ -159,6 +159,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ runner.arch }}-v42.2.0
+
       - name: Free disk space
         run: |
           echo "=== Disk before cleanup ==="
@@ -184,7 +190,7 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          DEBUG: 'electron-forge:*'
+          DEBUG: 'electron-forge:*,electron-packager,@electron/get:*'
 
       - name: List build output
         if: always()
