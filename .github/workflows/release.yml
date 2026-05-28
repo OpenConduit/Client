@@ -175,10 +175,20 @@ jobs:
       - name: List build output
         if: always()
         run: |
+          echo "=== working directory ==="
+          pwd
+          echo "=== top-level ls ==="
+          ls -la
           echo "=== out/ tree ==="
           find out -type f 2>/dev/null || echo "(empty or missing)"
+          echo "=== .vite/ tree ==="
+          find .vite -type f 2>/dev/null || echo "(empty or missing)"
           echo "=== repo-wide .deb/.rpm search ==="
           find . -path ./node_modules -prune -o \( -name "*.deb" -o -name "*.rpm" \) -print 2>/dev/null | grep -v '^$' || echo "No .deb/.rpm found anywhere"
+          echo "=== forge temp/cache dirs ==="
+          find /tmp -maxdepth 3 -name "*.deb" -o -name "*.rpm" 2>/dev/null || echo "(none in /tmp)"
+          echo "=== node_modules/.cache electron-forge ==="
+          ls node_modules/.cache 2>/dev/null || echo "(no .cache)"
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
