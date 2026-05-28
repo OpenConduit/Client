@@ -60,7 +60,7 @@ jobs:
           echo "APPLE_IDENTITY=Developer ID Application: Andrew Chumchal (2TT36YTB8P)" >> $GITHUB_ENV
 
       - name: Build macOS arm64
-        run: npm run make -w packages/desktop -- --platform darwin --arch arm64
+        run: npm run make -- --platform darwin --arch arm64
         env:
           APPLE_IDENTITY: ${{ env.APPLE_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -121,7 +121,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Windows ${{ matrix.arch }}
-        run: npm run make -w packages/desktop -- --platform win32 --arch ${{ matrix.arch }}
+        run: npm run make -- --platform win32 --arch ${{ matrix.arch }}
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=6144
@@ -162,7 +162,7 @@ jobs:
         run: sudo apt-get install -y rpm
 
       - name: Build Linux distributable
-        run: npm run make -w packages/desktop -- --platform linux
+        run: npm run make -- --platform linux
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=6144
