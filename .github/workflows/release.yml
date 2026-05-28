@@ -143,13 +143,13 @@ jobs:
           $VERSION = $tag -replace '^v', ''
           $arch = "${{ matrix.arch }}"
           # Rename Setup.exe to follow -win32-{arch} naming convention required by the auto-updater
-          $setupExe = Get-ChildItem -Path "packages/desktop/out/make" -Recurse -Filter "*Setup.exe" | Select-Object -First 1
+          $setupExe = Get-ChildItem -Path "packages/desktop/out/make" -Recurse -Filter "*Setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($setupExe) {
             Rename-Item -Path $setupExe.FullName -NewName "OpenConduit-win32-${arch}-${VERSION}.exe"
           }
           # Rename RELEASES → RELEASES-{arch} so x64 and arm64 uploads don't collide
           # on the same GitHub release (the update worker already prefers RELEASES-{arch})
-          $releases = Get-ChildItem -Path "packages/desktop/out/make" -Recurse -Filter "RELEASES" | Select-Object -First 1
+          $releases = Get-ChildItem -Path "packages/desktop/out/make" -Recurse -Filter "RELEASES" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($releases) {
             Rename-Item -Path $releases.FullName -NewName "RELEASES-${arch}"
           }
