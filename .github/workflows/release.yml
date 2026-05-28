@@ -176,25 +176,25 @@ jobs:
       - name: List build output
         if: always()
         run: |
-          echo "=== working directory ==="
-          pwd
-          echo "=== top-level ls ==="
-          ls -la
-          echo "=== @electron/fuses version installed ==="
-          node -e "console.log(require('./node_modules/@electron/fuses/package.json').version)"
-          echo "=== @electron-forge/plugin-fuses version ==="
-          node -e "console.log(require('./node_modules/@electron-forge/plugin-fuses/package.json').version)"
-          echo "=== out/ tree ==="
-          find out -type f 2>/dev/null || echo "(empty or missing)"
+          echo "=== Packages Folder ==="
+          ls -la packages/desktop 2>/dev/null || echo "packages/desktop/ not found"
+          ls -la packages/ 2>/dev/null || echo "packages/ not found"
+          echo "=== out/ exists? ==="
+          ls -la out 2>/dev/null || echo "out/ does not exist"
+          echo "=== out/ full tree ==="
+          find out 2>/dev/null || echo "(empty or missing)"
           echo "=== .vite/build/ (main process) ==="
           ls .vite/build/ 2>/dev/null | grep -v '\.map' || echo "(empty or missing)"
-          echo "=== forge packager temp (~/AppData equivalent) ==="
-          find "${HOME}/.config" -maxdepth 3 -name 'OpenConduit*' -o -name 'openconduit*' 2>/dev/null | head -20 || true
-          find /tmp -maxdepth 4 \( -name 'electron-*' -o -name 'OpenConduit*' -o -name 'openconduit*' \) 2>/dev/null | head -20 || true
-          echo "=== npm debug / crash logs ==="
-          find "${HOME}/.npm/_logs" -name '*.log' -newer package.json 2>/dev/null | head -5 | xargs tail -n 40 2>/dev/null || echo "(no recent npm logs)"
+          echo "=== /tmp/electron-packager contents ==="
+          find /tmp/electron-packager -maxdepth 4 2>/dev/null | head -40 || echo "(not found)"
+          echo "=== /tmp/electron-packager disk usage ==="
+          du -sh /tmp/electron-packager 2>/dev/null || echo "(not found)"
+          echo "=== @electron/fuses version installed ==="
+          node -e "console.log(require('./node_modules/@electron/fuses/package.json').version)"
           echo "=== repo-wide .deb/.rpm search ==="
           find . -path ./node_modules -prune -o \( -name "*.deb" -o -name "*.rpm" \) -print 2>/dev/null | grep -v '^$' || echo "No .deb/.rpm found anywhere"
+          echo "=== npm debug / crash logs ==="
+          find "${HOME}/.npm/_logs" -name '*.log' -newer package.json 2>/dev/null | head -3 | xargs tail -n 60 2>/dev/null || echo "(no recent npm logs)"
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
