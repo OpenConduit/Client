@@ -5,7 +5,8 @@ import type {
   FolderEntry,
   McpServerConfig,
   McpTool,
-  SimpleCompletionRequest,
+  SkillFile,
+  SkillWritePayload,
   StreamChunk,
   StreamEnd,
   StreamError,
@@ -214,6 +215,16 @@ declare global {
         onEvent: (cb: (event: import('../main/collaboration/types').ServerEvent) => void) => UnsubFn;
         /** Subscribe to deep-link join invites (openconduit://join?roomId=…). Returns an unsub fn. */
         onInvite: (cb: (roomId: string) => void) => UnsubFn;
+      };
+      skills: {
+        /** List all skills found across configured workspace roots. */
+        list: () => Promise<SkillFile[]>;
+        /** Write (create or overwrite) a skill into a workspace's .openconduit/skills/ directory. */
+        write: (payload: SkillWritePayload) => Promise<void>;
+        /** Delete a skill folder by its absolute path. */
+        delete: (folderPath: string) => Promise<void>;
+        /** Returns the default per-user skills root path (~/.openconduit). */
+        userPath: () => Promise<string>;
       };
     };
     /**

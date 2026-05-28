@@ -19,6 +19,8 @@ import type {
   FolderEntry,
   McpServerConfig,
   McpTool,
+  SkillFile,
+  SkillWritePayload,
   StreamChunk,
   StreamEnd,
   StreamError,
@@ -380,6 +382,21 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('collab:join-invite', handler);
       return () => ipcRenderer.removeListener('collab:join-invite', handler);
     },
+  },
+
+  skills: {
+    /** List all skills found across configured workspace roots (.openconduit/skills/, .github/skills/, etc.). */
+    list: (): Promise<SkillFile[]> =>
+      ipcRenderer.invoke(IPC.SKILLS_LIST),
+    /** Write (create or overwrite) a skill into a workspace's .openconduit/skills/ directory. */
+    write: (payload: SkillWritePayload): Promise<void> =>
+      ipcRenderer.invoke(IPC.SKILLS_WRITE, payload),
+    /** Delete a skill folder by its absolute path. */
+    delete: (folderPath: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.SKILLS_DELETE, folderPath),
+    /** Returns the default per-user skills root path (~/.openconduit). */
+    userPath: (): Promise<string> =>
+      ipcRenderer.invoke(IPC.SKILLS_USER_PATH),
   },
 
 });

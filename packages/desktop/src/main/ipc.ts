@@ -45,12 +45,15 @@ import { streamOpenAI } from './providers/openai';
 import { streamLmStudio } from './providers/lmstudio';
 import { callWebTool, BUILTIN_SERVER_ID } from './webtools';
 import { callFileTool, FILE_SERVER_ID, FILE_TOOL_DEFS } from './filetools';
+import { callSkillTool, SKILLS_SERVER_ID, SKILL_TOOL_DEFS } from './skilltools';
 import { normalizeOllamaBaseUrl, streamOllama } from './providers/ollama';
 import { streamGemini } from './providers/gemini';
 import { streamBedrock } from './providers/bedrock';
 import { streamPerplexity } from './providers/perplexity';
 import { streamCopilot, startCopilotAuth, pollCopilotAuth, listCopilotModels, getCopilotUsage } from './providers/copilot';
 import { evaluateRouting } from './routing';
+import { listSkills, writeSkill, deleteSkill, getUserSkillsPath } from './skills';
+import type { SkillWritePayload } from '../shared/types';
 import {
   createRoom,
   joinRoom,
@@ -1026,13 +1029,17 @@ export function registerIpcHandlers(): void {
           if (request.folderContext?.rootPath) {
             tools.push(...FILE_TOOL_DEFS);
           }
+          // Skill tools are always available so the AI can discover and read skills
+          if (settings.features?.skills !== false) {
+            tools.push(...SKILL_TOOL_DEFS);
+          }
           // Prefix external MCP tool names with "serverId__" so they are guaranteed unique
           // across servers — Anthropic and OpenAI reject requests with duplicate tool names.
           // Built-in, file, and extension tools keep their short names unchanged so their
           // local handlers can continue to switch on tc.name without modification.
           // After prefixing, deduplicate: same prefixed name = same tool on same server.
           {
-            const INTERNAL_IDS = new Set([BUILTIN_SERVER_ID, FILE_SERVER_ID, EXTENSION_SERVER_ID]);
+            const INTERNAL_IDS = new Set([BUILTIN_SERVER_ID, FILE_SERVER_ID, SKILLS_SERVER_ID, EXTENSION_SERVER_ID]);
             const seen = new Set<string>();
             let i = 0;
             while (i < tools.length) {
@@ -1202,6 +1209,24 @@ export function registerIpcHandlers(): void {
               processedCalls.push({
                 ...tc,
                 serverId: FILE_SERVER_ID,
+                approved: true,
+                result: result.result,
+                isError: result.isError,
+                pending: false,
+                durationMs,
+              });
+              continue;
+            }
+
+            // Route skill tools (skill_list, skill_read, skill_save) to the local handler
+            if (serverId === SKILLS_SERVER_ID) {
+              const skillWorkspaces = settings.skillWorkspaces ?? [];
+              const t0 = performance.now();
+              const result = await callSkillTool(tc, skillWorkspaces);
+              const durationMs = Math.round(performance.now() - t0);
+              processedCalls.push({
+                ...tc,
+                serverId: SKILLS_SERVER_ID,
                 approved: true,
                 result: result.result,
                 isError: result.isError,
@@ -1607,6 +1632,26 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('collab:lock-release', (): void => {
     sendToRoom({ type: 'lock_release' });
+  });
+
+  // ─── Skills ──────────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC.SKILLS_LIST, async () => {
+    const settings = getSettings();
+    const workspaces = settings.skillWorkspaces ?? [];
+    return listSkills(workspaces);
+  });
+
+  ipcMain.handle(IPC.SKILLS_USER_PATH, () => getUserSkillsPath());
+
+  ipcMain.handle(IPC.SKILLS_WRITE, async (_e, payload: SkillWritePayload) => {
+    await writeSkill(payload);
+  });
+
+  ipcMain.handle(IPC.SKILLS_DELETE, async (_e, folderPath: string) => {
+    const settings = getSettings();
+    const workspaces = settings.skillWorkspaces ?? [];
+    await deleteSkill(folderPath, workspaces);
   });
 }
 

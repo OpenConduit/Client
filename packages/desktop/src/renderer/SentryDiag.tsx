@@ -62,7 +62,7 @@ export function SentryDiag() {
       setVisible(v => !v);
       setTestResult(null);
     }
-  }, []);
+  }, [isMac]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey);
