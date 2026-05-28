@@ -159,6 +159,19 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Free disk space
+        run: |
+          echo "=== Disk before cleanup ==="
+          df -h /
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          echo "=== Disk after cleanup ==="
+          df -h /
+
       - name: Install Linux packaging deps
         run: sudo apt-get install -y rpm fakeroot
 
@@ -179,6 +192,10 @@ jobs:
           echo "=== Packages Folder ==="
           ls -la packages/desktop 2>/dev/null || echo "packages/desktop/ not found"
           ls -la packages/ 2>/dev/null || echo "packages/ not found"
+          echo "=== disk space ==="
+          df -h /
+          echo "=== node_modules size ==="
+          du -sh node_modules
           echo "=== out/ exists? ==="
           ls -la out 2>/dev/null || echo "out/ does not exist"
           echo "=== out/ full tree ==="
