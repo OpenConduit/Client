@@ -14,6 +14,9 @@ on:
 permissions:
   contents: write  # needed to create GitHub Releases
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-mac:
     name: Build macOS (Apple Silicon)
@@ -57,7 +60,7 @@ jobs:
           echo "APPLE_IDENTITY=Developer ID Application: Andrew Chumchal (2TT36YTB8P)" >> $GITHUB_ENV
 
       - name: Build macOS arm64
-        run: npm run make -- --platform darwin --arch arm64
+        run: npm run make -w packages/desktop -- --platform darwin --arch arm64
         env:
           APPLE_IDENTITY: ${{ env.APPLE_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -68,16 +71,6 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-
-      - name: Rename macOS artifacts
-        run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}"
-          VERSION="${TAG#v}"
-          # Rename the DMG to include version and arch (ZIP from MakerZIP is already named correctly)
-          DMG=$(find packages/desktop/out/make -name "*.dmg" | head -1)
-          if [ -n "$DMG" ]; then
-            mv "$DMG" "packages/desktop/out/make/OpenConduit-mac-arm64-${VERSION}.dmg"
-          fi
 
       - name: Upload dSYMs to Sentry
         continue-on-error: true
@@ -128,31 +121,13 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Windows ${{ matrix.arch }}
-        run: npm run make -- --platform win32 --arch ${{ matrix.arch }}
+        run: npm run make -w packages/desktop -- --platform win32 --arch ${{ matrix.arch }}
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=6144
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-
-      - name: Rename Windows artifacts
-        shell: pwsh
-        run: |
-          $tag = "${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}"
-          $VERSION = $tag -replace '^v', ''
-          $arch = "${{ matrix.arch }}"
-          # Rename Setup.exe to follow -win32-{arch} naming convention required by the auto-updater
-          $setupExe = Get-ChildItem -Path "packages/desktop/out/make" -Recurse -Filter "*Setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($setupExe) {
-            Rename-Item -Path $setupExe.FullName -NewName "OpenConduit-win32-${arch}-${VERSION}.exe"
-          }
-          # Rename RELEASES → RELEASES-{arch} so x64 and arm64 uploads don't collide
-          # on the same GitHub release (the update worker already prefers RELEASES-{arch})
-          $releases = Get-ChildItem -Path "packages/desktop/out/make" -Recurse -Filter "RELEASES" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($releases) {
-            Rename-Item -Path $releases.FullName -NewName "RELEASES-${arch}"
-          }
 
       - name: Upload Windows ${{ matrix.arch }} artifacts
         uses: actions/upload-artifact@v4
@@ -187,7 +162,7 @@ jobs:
         run: sudo apt-get install -y rpm
 
       - name: Build Linux distributable
-        run: npm run make -- --platform linux
+        run: npm run make -w packages/desktop -- --platform linux
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=6144

@@ -1,3 +1,5 @@
+import fs from 'fs/promises';
+import path from 'path';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
@@ -44,7 +46,6 @@ const config: ForgeConfig = {
     // Produces: OpenConduit-{version}-darwin-{arch}.zip
     new MakerZIP({}, ['darwin']),
     new MakerDMG({
-      name: 'OpenConduit',
       icon: 'icons/icon.icns',
       format: 'ULFO',
     }, ['darwin']),
@@ -95,6 +96,33 @@ const config: ForgeConfig = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
   ],
+  hooks: {
+    // Rename Squirrel outputs so x64 and arm64 assets don't collide on the
+    // GitHub release page and the auto-updater can find the right RELEASES file.
+    postMake: async (_cfg, results) => {
+      for (const result of results) {
+        if (result.platform !== 'win32') continue;
+        const { arch, packageJSON: { version } } = result;
+        for (let i = 0; i < result.artifacts.length; i++) {
+          const artifact = result.artifacts[i];
+          const dir = path.dirname(artifact);
+          const base = path.basename(artifact);
+          let newBase: string | null = null;
+          if (base === 'RELEASES') {
+            newBase = `RELEASES-${arch}`;
+          } else if (base.endsWith('Setup.exe')) {
+            newBase = `OpenConduit-win32-${arch}-${version}.exe`;
+          }
+          if (newBase) {
+            const newPath = path.join(dir, newBase);
+            await fs.rename(artifact, newPath);
+            result.artifacts[i] = newPath;
+          }
+        }
+      }
+      return results;
+    },
+  },
 };
 
 export default config;
