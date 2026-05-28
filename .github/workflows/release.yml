@@ -163,6 +163,7 @@ jobs:
         run: sudo apt-get install -y rpm fakeroot
 
       - name: Build Linux distributable
+        id: make
         run: npm run make -- --platform linux --arch x64
         env:
           NODE_ENV: production
@@ -179,16 +180,21 @@ jobs:
           pwd
           echo "=== top-level ls ==="
           ls -la
+          echo "=== @electron/fuses version installed ==="
+          node -e "console.log(require('./node_modules/@electron/fuses/package.json').version)"
+          echo "=== @electron-forge/plugin-fuses version ==="
+          node -e "console.log(require('./node_modules/@electron-forge/plugin-fuses/package.json').version)"
           echo "=== out/ tree ==="
           find out -type f 2>/dev/null || echo "(empty or missing)"
-          echo "=== .vite/ tree ==="
-          find .vite -type f 2>/dev/null || echo "(empty or missing)"
+          echo "=== .vite/build/ (main process) ==="
+          ls .vite/build/ 2>/dev/null | grep -v '\.map' || echo "(empty or missing)"
+          echo "=== forge packager temp (~/AppData equivalent) ==="
+          find "${HOME}/.config" -maxdepth 3 -name 'OpenConduit*' -o -name 'openconduit*' 2>/dev/null | head -20 || true
+          find /tmp -maxdepth 4 \( -name 'electron-*' -o -name 'OpenConduit*' -o -name 'openconduit*' \) 2>/dev/null | head -20 || true
+          echo "=== npm debug / crash logs ==="
+          find "${HOME}/.npm/_logs" -name '*.log' -newer package.json 2>/dev/null | head -5 | xargs tail -n 40 2>/dev/null || echo "(no recent npm logs)"
           echo "=== repo-wide .deb/.rpm search ==="
           find . -path ./node_modules -prune -o \( -name "*.deb" -o -name "*.rpm" \) -print 2>/dev/null | grep -v '^$' || echo "No .deb/.rpm found anywhere"
-          echo "=== forge temp/cache dirs ==="
-          find /tmp -maxdepth 3 -name "*.deb" -o -name "*.rpm" 2>/dev/null || echo "(none in /tmp)"
-          echo "=== node_modules/.cache electron-forge ==="
-          ls node_modules/.cache 2>/dev/null || echo "(no .cache)"
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
