@@ -137,6 +137,7 @@ jobs:
             packages/desktop/out/make/**/*.exe
             packages/desktop/out/make/**/*.nupkg
             packages/desktop/out/make/**/RELEASES-*
+          if-no-files-found: error
           retention-days: 30
 
   build-linux:
@@ -170,6 +171,10 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
+      - name: List build output
+        if: always()
+        run: find packages/desktop/out -type f 2>/dev/null || echo "packages/desktop/out does not exist"
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -177,6 +182,7 @@ jobs:
           path: |
             packages/desktop/out/make/**/*.deb
             packages/desktop/out/make/**/*.rpm
+          if-no-files-found: error
           retention-days: 30
 
   release:
