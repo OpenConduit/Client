@@ -12,8 +12,15 @@
     "resolveJsonModule": true,
     "jsx": "react-jsx",
     "strict": false,
-    "paths": {},
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "outDir": "dist",
+    "paths": {
+      "@main/*": ["src/main/*"],
+      "@renderer/*": ["src/renderer/*"],
+      "@shared/*": ["src/shared/*"],
+      "@openconduit/core": ["../core/src/index.ts"],
+      "@openconduit/core/*": ["../core/src/*"]
+    }
   },
-  "include": ["src/**/*", "packages/**/*"]
+  "include": ["src/**/*", "forge.config.ts", "vite.*.ts"]
 }

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 1.2.2) — must match packages/desktop/package.json'
+        description: 'Version to release (e.g. 1.2.2) — must match package.json'
         required: true
         type: string
 
@@ -78,7 +78,7 @@ jobs:
           npx sentry-cli debug-files upload \
             --org openconduit \
             --project ${{ secrets.SENTRY_PROJECT }} \
-            packages/desktop/out/make
+            out/make
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
@@ -93,8 +93,8 @@ jobs:
         with:
           name: openconduit-mac-arm64-${{ github.ref_name }}
           path: |
-            packages/desktop/out/make/**/*.dmg
-            packages/desktop/out/make/**/*.zip
+            out/make/**/*.dmg
+            out/make/**/*.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -134,9 +134,9 @@ jobs:
         with:
           name: openconduit-win-${{ matrix.arch }}-${{ github.ref_name }}
           path: |
-            packages/desktop/out/make/**/*.exe
-            packages/desktop/out/make/**/*.nupkg
-            packages/desktop/out/make/**/RELEASES-*
+            out/make/**/*.exe
+            out/make/**/*.nupkg
+            out/make/**/RELEASES-*
           if-no-files-found: error
           retention-days: 30
 
@@ -160,11 +160,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Linux packaging deps
-        run: sudo apt-get install -y rpm
+        run: sudo apt-get install -y rpm fakeroot
 
       - name: Build Linux distributable
-        working-directory: packages/desktop
-        run: npx electron-forge make --platform linux
+        run: npm run make -- --platform linux --arch x64
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=6144
@@ -176,8 +175,8 @@ jobs:
       - name: List build output
         if: always()
         run: |
-          echo "=== packages/desktop/out tree ==="
-          find packages/desktop/out -type f 2>/dev/null || echo "(empty or missing)"
+          echo "=== out/ tree ==="
+          find out -type f 2>/dev/null || echo "(empty or missing)"
           echo "=== repo-wide .deb/.rpm search ==="
           find . -path ./node_modules -prune -o \( -name "*.deb" -o -name "*.rpm" \) -print 2>/dev/null | grep -v '^$' || echo "No .deb/.rpm found anywhere"
 
@@ -186,8 +185,8 @@ jobs:
         with:
           name: openconduit-linux-${{ github.ref_name }}
           path: |
-            packages/desktop/out/make/**/*.deb
-            packages/desktop/out/make/**/*.rpm
+            out/make/**/*.deb
+            out/make/**/*.rpm
           if-no-files-found: error
           retention-days: 30
 

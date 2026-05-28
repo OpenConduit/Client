@@ -49,7 +49,7 @@ jobs:
           fi
 
       - name: Install new @openconduit/core
-        run: npm install @openconduit/core@${{ steps.ver.outputs.version }} -w packages/desktop
+        run: npm install @openconduit/core@${{ steps.ver.outputs.version }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -67,10 +67,10 @@ jobs:
             | | |
             |---|---|
             | **New version** | `${{ steps.ver.outputs.version }}` |
-            | **File changed** | `packages/desktop/package.json` |
+            | **File changed** | `package.json` |
 
             ### After merging
-            Check `packages/desktop/src/shared/types.ts` for local type stubs whose
+            Check `src/shared/types.ts` for local type stubs whose
             comment says they were declared to work around a missing package version.
             If those types are now included in `@openconduit/core@${{ steps.ver.outputs.version }}`,
             remove the local stubs to avoid duplicate declarations.
