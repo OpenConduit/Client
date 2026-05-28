@@ -171,10 +171,15 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          DEBUG: 'electron-forge:*'
 
       - name: List build output
         if: always()
-        run: find . -path ./node_modules -prune -o -name "*.deb" -print -o -name "*.rpm" -print 2>/dev/null | grep -v '^$' || echo "No .deb/.rpm found anywhere"
+        run: |
+          echo "=== packages/desktop/out tree ==="
+          find packages/desktop/out -type f 2>/dev/null || echo "(empty or missing)"
+          echo "=== repo-wide .deb/.rpm search ==="
+          find . -path ./node_modules -prune -o \( -name "*.deb" -o -name "*.rpm" \) -print 2>/dev/null | grep -v '^$' || echo "No .deb/.rpm found anywhere"
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4

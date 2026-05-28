@@ -41,7 +41,7 @@ const config: ForgeConfig = {
       name: 'openconduit',
       setupIcon: 'icons/favicon.ico',
       iconUrl: 'https://raw.githubusercontent.com/OpenConduit/Client/main/icons/favicon.ico',
-    }),
+    }, ['win32']),
     // ZIP for macOS — required by update.electronjs.org auto-update service.
     // Produces: OpenConduit-{version}-darwin-{arch}.zip
     new MakerZIP({}, ['darwin']),
@@ -53,12 +53,12 @@ const config: ForgeConfig = {
       options: {
         icon: 'icons/icon-512x512.png',
       },
-    }),
+    }, ['linux']),
     new MakerDeb({
       options: {
         icon: 'icons/icon-512x512.png',
       },
-    }),
+    }, ['linux']),
   ],
   plugins: [
     new VitePlugin({
