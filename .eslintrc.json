@@ -18,7 +18,8 @@
     "import/ignore": [
       "uuid",
       "@modelcontextprotocol/sdk",
-      "@openconduit/core"
+      "@openconduit/core",
+      "@electron/fuses"
     ]
   },
   "rules": {
@@ -29,6 +30,6 @@
       "varsIgnorePattern": "^_",
       "destructuredArrayIgnorePattern": "^_"
     }],
-    "import/no-unresolved": ["error", { "ignore": ["uuid", "@modelcontextprotocol/sdk", "@openconduit/core"] }]
+    "import/no-unresolved": ["error", { "ignore": ["uuid", "@modelcontextprotocol/sdk", "@openconduit/core", "@electron/fuses"] }]
   }
 }
