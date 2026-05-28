@@ -163,7 +163,8 @@ jobs:
         run: sudo apt-get install -y rpm
 
       - name: Build Linux distributable
-        run: npm run make -- --platform linux
+        working-directory: packages/desktop
+        run: npx electron-forge make --platform linux
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=6144
@@ -173,7 +174,7 @@ jobs:
 
       - name: List build output
         if: always()
-        run: find packages/desktop/out -type f 2>/dev/null || echo "packages/desktop/out does not exist"
+        run: find . -path ./node_modules -prune -o -name "*.deb" -print -o -name "*.rpm" -print 2>/dev/null | grep -v '^$' || echo "No .deb/.rpm found anywhere"
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
