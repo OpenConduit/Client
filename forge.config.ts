@@ -105,6 +105,10 @@ const config: ForgeConfig = {
     // CI runners. Runs after Vite output is copied into the app dir but before asar
     // packaging, so the shipped JS carries debug IDs; the .map files are stripped
     // afterwards so they never ship inside app.asar.
+    //
+    // IMPORTANT: source map upload is BEST-EFFORT. A Sentry failure (bad token,
+    // network, rate limit) must never abort the release — an uncaught throw here
+    // silently kills the whole `make` run (exit 0, no makers, no artifacts).
     packageAfterCopy: async (_cfg, buildPath: string) => {
       if (!process.env.SENTRY_AUTH_TOKEN) return; // skip local/dev builds
       const viteDir = path.join(buildPath, '.vite');
@@ -117,21 +121,38 @@ const config: ForgeConfig = {
       const release = process.env.npm_package_version;
       const run = (args: string[]) =>
         execFileSync(npx, ['sentry-cli', ...args], { stdio: 'inherit' });
-      run(['sourcemaps', 'inject', viteDir]);
-      run([
-        'sourcemaps', 'upload',
-        '--org', 'openconduit',
-        ...(process.env.SENTRY_PROJECT ? ['--project', process.env.SENTRY_PROJECT] : []),
-        ...(release ? ['--release', release] : []),
-        viteDir,
-      ]);
-      // Strip source maps so they aren't packaged into app.asar.
-      const entries = await fs.readdir(viteDir, { recursive: true });
-      await Promise.all(
-        entries
-          .filter((f): f is string => typeof f === 'string' && f.endsWith('.map'))
-          .map((f) => fs.rm(path.join(viteDir, f), { force: true })),
-      );
+      try {
+        run(['sourcemaps', 'inject', viteDir]);
+        run([
+          'sourcemaps', 'upload',
+          '--org', 'openconduit',
+          ...(process.env.SENTRY_PROJECT ? ['--project', process.env.SENTRY_PROJECT] : []),
+          ...(release ? ['--release', release] : []),
+          viteDir,
+        ]);
+      } catch (err) {
+        console.warn(
+          `[sentry] source map upload failed (non-fatal, build continues): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+      // Strip source maps so they aren't packaged into app.asar — best-effort,
+      // never fatal.
+      try {
+        const entries = await fs.readdir(viteDir, { recursive: true });
+        await Promise.all(
+          entries
+            .filter((f): f is string => typeof f === 'string' && f.endsWith('.map'))
+            .map((f) => fs.rm(path.join(viteDir, f), { force: true })),
+        );
+      } catch (err) {
+        console.warn(
+          `[sentry] failed to strip source maps (non-fatal): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     },
     // Rename Squirrel outputs so x64 and arm64 assets don't collide on the
     // GitHub release page and the auto-updater can find the right RELEASES file.
