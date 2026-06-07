@@ -93,7 +93,11 @@ export function getSettings(): AppSettings {
 
 export function setSettings(partial: Partial<AppSettings>): AppSettings {
   for (const [k, v] of Object.entries(partial)) {
-    settingsStore.set(k, v);
+    if (v === undefined) {
+      settingsStore.delete(k as keyof AppSettings);
+    } else {
+      settingsStore.set(k, v);
+    }
   }
   return settingsStore.store as AppSettings;
 }
