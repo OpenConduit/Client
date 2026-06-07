@@ -1,6 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
 import path from 'path';
-import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 // https://vitejs.dev/config
 export default defineConfig(({ mode }) => {
@@ -18,19 +17,12 @@ export default defineConfig(({ mode }) => {
       '@shared': path.resolve(__dirname, 'src/shared'),
     },
   },
-  plugins: [
-    // Upload main-process source maps to Sentry only in CI (when auth token is set).
-    ...(env.SENTRY_AUTH_TOKEN ? [sentryVitePlugin({
-      org:       'openconduit',
-      project:   env.SENTRY_PROJECT,
-      authToken: env.SENTRY_AUTH_TOKEN,
-      release:   { name: process.env.npm_package_version },
-      sourcemaps: { assets: '.vite/build/**' },
-      telemetry: false,
-    })] : []),
-  ],
+  plugins: [],
   build: {
-    sourcemap: true, // required for Sentry source map upload
+    // 'hidden' still emits source maps (uploaded to Sentry via sentry-cli in the
+    // forge packageAfterCopy hook) but omits the sourceMappingURL comment, so maps
+    // are never referenced by — or shipped to — end users.
+    sourcemap: 'hidden',
     rollupOptions: {
       // Optional native modules used by ws / @google/genai — not needed at runtime.
       // @aws-sdk/* and @smithy/* were previously external but that breaks packaged

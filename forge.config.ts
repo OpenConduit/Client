@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { execFileSync } from 'node:child_process';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
@@ -97,6 +98,41 @@ const config: ForgeConfig = {
     }),
   ],
   hooks: {
+    // Inject Sentry debug IDs into the bundled main + renderer JS and upload the
+    // source maps using the lightweight sentry-cli (a Rust binary). This replaces
+    // the in-process @sentry/vite-plugin, which held the entire decoded source-map
+    // graph in the Node heap and OOM-killed the renderer build on memory-limited
+    // CI runners. Runs after Vite output is copied into the app dir but before asar
+    // packaging, so the shipped JS carries debug IDs; the .map files are stripped
+    // afterwards so they never ship inside app.asar.
+    packageAfterCopy: async (_cfg, buildPath: string) => {
+      if (!process.env.SENTRY_AUTH_TOKEN) return; // skip local/dev builds
+      const viteDir = path.join(buildPath, '.vite');
+      try {
+        await fs.access(viteDir);
+      } catch {
+        return; // no Vite output to process
+      }
+      const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+      const release = process.env.npm_package_version;
+      const run = (args: string[]) =>
+        execFileSync(npx, ['sentry-cli', ...args], { stdio: 'inherit' });
+      run(['sourcemaps', 'inject', viteDir]);
+      run([
+        'sourcemaps', 'upload',
+        '--org', 'openconduit',
+        ...(process.env.SENTRY_PROJECT ? ['--project', process.env.SENTRY_PROJECT] : []),
+        ...(release ? ['--release', release] : []),
+        viteDir,
+      ]);
+      // Strip source maps so they aren't packaged into app.asar.
+      const entries = await fs.readdir(viteDir, { recursive: true });
+      await Promise.all(
+        entries
+          .filter((f): f is string => typeof f === 'string' && f.endsWith('.map'))
+          .map((f) => fs.rm(path.join(viteDir, f), { force: true })),
+      );
+    },
     // Rename Squirrel outputs so x64 and arm64 assets don't collide on the
     // GitHub release page and the auto-updater can find the right RELEASES file.
     postMake: async (_cfg, results) => {

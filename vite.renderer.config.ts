@@ -2,7 +2,6 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { createRequire } from 'module';
-import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 const require = createRequire(import.meta.url);
 const { version } = require('./package.json') as { version: string };
@@ -17,15 +16,6 @@ export default defineConfig(({ mode }) => {
   return {
   plugins: [
     react(),
-    // Upload renderer source maps to Sentry only in CI (when auth token is set).
-    ...(env.SENTRY_AUTH_TOKEN ? [sentryVitePlugin({
-      org:       'openconduit',
-      project:   env.SENTRY_PROJECT,
-      authToken: env.SENTRY_AUTH_TOKEN,
-      release:   { name: version },
-      sourcemaps: { assets: '.vite/renderer/**' },
-      telemetry: false,
-    })] : []),
   ],
   define: {
     __APP_VERSION__: JSON.stringify(version),
@@ -34,7 +24,10 @@ export default defineConfig(({ mode }) => {
     __SENTRY_DSN__: JSON.stringify(env.SENTRY_DSN ?? ''),
   },
   build: {
-    sourcemap: true, // required for Sentry source map upload
+    // 'hidden' still emits source maps (uploaded to Sentry via sentry-cli in the
+    // forge packageAfterCopy hook) but omits the sourceMappingURL comment, so maps
+    // are never referenced by — or shipped to — end users.
+    sourcemap: 'hidden',
   },
   css: {
     postcss: './postcss.config.cjs',
