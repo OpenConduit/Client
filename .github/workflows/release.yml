@@ -37,6 +37,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron
+          key: electron-${{ runner.os }}-${{ runner.arch }}-v42.2.0
+
       - name: Import signing certificate
         env:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
