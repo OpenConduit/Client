@@ -80,10 +80,20 @@ jobs:
           unzip -q /tmp/electron.zip -d /tmp/electron-dist
           echo "ELECTRON_DIST_PATH=/tmp/electron-dist" >> $GITHUB_ENV
 
-      - name: Free disk space
+      - name: Verify Electron setup
         run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-          sudo apt-get clean
+          echo "=== ELECTRON_DIST_PATH ==="
+          echo "$ELECTRON_DIST_PATH"
+          echo "=== electron-dist contents ==="
+          find /tmp/electron-dist -maxdepth 1
+          echo "=== extract-zip version ==="
+          node -e "console.log(require('./node_modules/extract-zip/package.json').version)"
+          echo "=== yauzl version ==="
+          node -e "console.log(require('./node_modules/yauzl/package.json').version)"
+          echo "=== @electron/packager version ==="
+          node -e "console.log(require('./node_modules/@electron/packager/package.json').version)"
+          echo "=== does packager recognise electronDist? ==="
+          grep -rl "electronDist" node_modules/@electron/packager/dist/ 2>/dev/null | head -3 || echo "electronDist NOT in packager source — option will be ignored"
 
       - name: Install Linux packaging deps
         run: sudo apt-get install -y rpm fakeroot
@@ -93,6 +103,15 @@ jobs:
         env:
           NODE_ENV: production
           NODE_OPTIONS: --max-old-space-size=6144
+          DEBUG: 'electron-forge:*,electron-packager,@electron/get:*'
+
+      - name: Post-build diagnostics
+        if: always()
+        run: |
+          echo "=== out/ ==="
+          find out 2>/dev/null || echo "out/ missing"
+          echo "=== /tmp/electron-packager ==="
+          find /tmp/electron-packager -maxdepth 3 2>/dev/null | head -30 || echo "(not found)"
 
       - uses: actions/upload-artifact@v4
         with:
