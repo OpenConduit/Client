@@ -38,11 +38,13 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache Electron binary
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Caches/electron
-          key: electron-${{ runner.os }}-${{ runner.arch }}-v42.2.0
+      - name: Pre-extract Electron binary
+        run: |
+          mkdir -p /tmp/electron-dist
+          curl -fsSL "https://github.com/electron/electron/releases/download/v42.2.0/electron-v42.2.0-darwin-arm64.zip" \
+            -o /tmp/electron.zip
+          unzip -q /tmp/electron.zip -d /tmp/electron-dist
+          echo "ELECTRON_DIST_PATH=/tmp/electron-dist" >> $GITHUB_ENV
 
       - name: Import signing certificate
         env:
@@ -128,6 +130,17 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Pre-extract Electron binary
+        shell: pwsh
+        run: |
+          $arch = "${{ matrix.arch }}"
+          $url = "https://github.com/electron/electron/releases/download/v42.2.0/electron-v42.2.0-win32-$arch.zip"
+          $dest = "C:\electron-dist"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile C:\electron.zip -UseBasicParsing
+          Expand-Archive -Path C:\electron.zip -DestinationPath $dest -Force
+          "ELECTRON_DIST_PATH=$dest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Build Windows ${{ matrix.arch }}
         run: npm run make -- --platform win32 --arch ${{ matrix.arch }}
         env:
@@ -168,11 +181,13 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache Electron binary
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/electron
-          key: electron-${{ runner.os }}-${{ runner.arch }}-v42.2.0
+      - name: Pre-extract Electron binary
+        run: |
+          mkdir -p /tmp/electron-dist
+          curl -fsSL "https://github.com/electron/electron/releases/download/v42.2.0/electron-v42.2.0-linux-x64.zip" \
+            -o /tmp/electron.zip
+          unzip -q /tmp/electron.zip -d /tmp/electron-dist
+          echo "ELECTRON_DIST_PATH=/tmp/electron-dist" >> $GITHUB_ENV
 
       - name: Free disk space
         run: |

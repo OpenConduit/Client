@@ -20,6 +20,13 @@ const config: ForgeConfig = {
     name: 'OpenConduit',
     executableName: 'openconduit',
     icon: 'icons/icon', // .icns on macOS, .ico on Windows, .png on Linux
+    // On CI, ELECTRON_DIST_PATH points to a pre-extracted Electron binary
+    // (downloaded and unzipped by a shell step before forge runs). This
+    // bypasses @electron/get's in-process extract-zip, which fails to keep
+    // the Node event loop alive on Linux CI with Node 26, causing the process
+    // to exit cleanly (code 0) mid-extraction with no artifacts produced.
+    // Locally ELECTRON_DIST_PATH is not set, so the normal download path runs.
+    ...(process.env.ELECTRON_DIST_PATH && { electronDist: process.env.ELECTRON_DIST_PATH }),
     ...(isMac && process.env.APPLE_IDENTITY && {
       osxSign: {
         identity: process.env.APPLE_IDENTITY,
