@@ -13,6 +13,10 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
 const isMac = process.platform === 'darwin';
 
+// Active timer handle that keeps the libuv event loop alive across the
+// @electron/packager download + extract step (see prePackage hook below).
+let packagingKeepAlive: ReturnType<typeof setInterval> | null = null;
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -98,6 +102,27 @@ const config: ForgeConfig = {
     }),
   ],
   hooks: {
+    // ---------------------------------------------------------------------
+    // Keep the libuv event loop alive across the @electron/packager step.
+    //
+    // On a clean `npm ci` install (CI), the async Electron download + zip
+    // extract inside packaging can let the event loop drain mid-operation,
+    // making Node exit *cleanly* (code 0) during "Finalizing package" before
+    // any maker runs — a green-looking job that uploads NO distributables.
+    // A no-op interval is an active timer handle that prevents the drain. It
+    // is bracketed precisely by prePackage/postPackage so it can never hang
+    // the maker phase and never masks a real packaging error (Forge calls
+    // process.exit() on fatal errors regardless of pending timers).
+    // ---------------------------------------------------------------------
+    prePackage: async () => {
+      packagingKeepAlive ??= setInterval(() => {}, 200);
+    },
+    postPackage: async () => {
+      if (packagingKeepAlive) {
+        clearInterval(packagingKeepAlive);
+        packagingKeepAlive = null;
+      }
+    },
     // Inject Sentry debug IDs into the bundled main + renderer JS and upload the
     // source maps using the lightweight sentry-cli (a Rust binary). This replaces
     // the in-process @sentry/vite-plugin, which held the entire decoded source-map
