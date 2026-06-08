@@ -115,7 +115,9 @@ const config: ForgeConfig = {
     // process.exit() on fatal errors regardless of pending timers).
     // ---------------------------------------------------------------------
     prePackage: async () => {
-      packagingKeepAlive ??= setInterval(() => {}, 200);
+      packagingKeepAlive ??= setInterval(() => {
+        /* keep the libuv event loop alive during Electron extraction */
+      }, 200);
     },
     postPackage: async () => {
       if (packagingKeepAlive) {
